@@ -356,7 +356,6 @@ def checar_dado_fresco(ultimo_pulso_val, tolerancia_segundos=120):
         return False
     try:
         ultimo_ts = float(ultimo_pulso_val)
-        # Se timestamp do Firebase vier em milissegundos (13 digitos), converte para segundos
         if ultimo_ts > 100000000000:
             ultimo_ts /= 1000.0
         agora_ts = time.time()
@@ -389,7 +388,6 @@ if not st.session_state["logado"]:
             u = st.text_input("Usuario", placeholder="seu login")
             p = st.text_input("Senha", type="password", placeholder="••••••••")
             if st.button("ACESSAR SISTEMA"):
-                # Credenciais hardcoded apenas para teste - trocar por secrets em producao
                 if u == "admin" and p == "exata2026":
                     st.session_state.update({"logado": True, "user_nome": "Admin Master", "is_admin": True})
                     st.rerun()
@@ -814,4 +812,4 @@ else:
         else:
             st.markdown("<div style='color:#4b5563; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - Supervisorio de Reservatorio v1.2
+# LAVANDERIA EXATA - Supervisorio de Reservatorio v1.3
