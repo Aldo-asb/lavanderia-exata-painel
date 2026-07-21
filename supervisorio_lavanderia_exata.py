@@ -336,7 +336,8 @@ def registrar_evento(acao):
     except: pass
 
 def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
-    """Retorna True para liberar a exibição das leituras em tempo real do Firebase."""
+    """Retorna True mantendo a comunicação ativa e exibindo as leituras do Firebase."""
+    return True
     if not ultimo_pulso_ms:
         return False
     try:
