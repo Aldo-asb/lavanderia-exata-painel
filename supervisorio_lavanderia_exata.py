@@ -324,7 +324,12 @@ def conectar_firebase():
             cred = credentials.Certificate(cred_dict)
             firebase_admin.initialize_app(cred, {'databaseURL': 'https://lavanderia-exata-default-rtdb.firebaseio.com/'})
             return True
-        except: return False
+        except Exception as e:
+            # ALTERAÇÃO: erro real exposto na tela em vez de escondido.
+            # Isso é temporário para diagnóstico - depois de resolver, pode
+            # deixar assim mesmo, não atrapalha o uso normal.
+            st.error(f"ERRO AO CONECTAR NO FIREBASE: {e}")
+            return False
     return True
 
 def registrar_evento(acao):
@@ -336,8 +341,18 @@ def registrar_evento(acao):
     except: pass
 
 def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
-    """Retorna True mantendo o sistema ativo e validando a comunicação."""
-    return True
+    """Retorna True se o dado foi atualizado recentemente.
+    ALTERAÇÃO: restaurada a verificação real (estava fixada em 'return True'
+    como paliativo). Agora que o erro de conexão está visível e será
+    corrigido, a verificação de frescor volta a refletir a comunicação real."""
+    if not ultimo_pulso_ms:
+        return False
+    try:
+        ultimo_pulso_ms = float(ultimo_pulso_ms)
+    except (TypeError, ValueError):
+        return False
+    agora_ms = time.time() * 1000
+    return (agora_ms - ultimo_pulso_ms) < (tolerancia_segundos * 1000)
 
 
 # --- 4. ESTADOS ---
@@ -573,8 +588,11 @@ else:
         except Exception as e:
             st.error(f"Erro na leitura dos dados: {e}")
 
-        # Se temos valor de percentual ou altura, ativamos a exibição
+        # ALTERAÇÃO: "dado disponível" (existe valor) agora é separado de
+        # "dado fresco" (chegou recentemente). São coisas diferentes:
+        # pode existir um valor antigo no banco mesmo sem comunicação atual.
         dado_disponivel = (percentual is not None or altura_m is not None)
+        dado_fresco = checar_dado_fresco(ultimo_pulso, tolerancia_segundos=60)
 
         altura_exibir = float(altura_m) if altura_m is not None else None
         volume_exibir = float(volume_l) if volume_l is not None else None
@@ -582,6 +600,15 @@ else:
 
         pct_barra_nivel = min(max(pct_exibir or 0, 0), 100) if pct_exibir is not None else 0
         pct_barra_volume = min(max(((volume_exibir or 0) / CAPACIDADE_LITROS) * 100, 0), 100) if volume_exibir is not None else 0
+
+        if dado_disponivel and not dado_fresco:
+            st.markdown("""
+            <div style='background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.4);
+                border-radius:10px; padding:14px 20px; margin-bottom:20px; text-align:center;
+                color:#ef4444; font-size:14px; font-weight:600; letter-spacing:1px;'>
+                ⚠️ ATENÇÃO: Dispositivo sem comunicação recente — dados podem estar desatualizados.
+            </div>
+            """, unsafe_allow_html=True)
 
         if falha_sensor:
             st.markdown("""
@@ -605,8 +632,8 @@ else:
                     <div class='gauge-bar-fill gauge-nivel-fill' style='width:{pct_barra_nivel}%;'></div>
                 </div>
                 <div class='gauge-meta'>Coluna d'água: {f"{altura_exibir:.2f} m" if altura_exibir is not None else "—"} de {ALTURA_MAXIMA_M:.2f} m</div>
-                <div class='{"dado-fresco" if dado_disponivel else "dado-antigo"}'>
-                    {"✔ Dado em tempo real" if dado_disponivel else "✘ Sem leitura recente"}
+                <div class='{"dado-fresco" if dado_fresco else "dado-antigo"}'>
+                    {"✔ Dado em tempo real" if dado_fresco else "✘ Sem leitura recente"}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -622,8 +649,8 @@ else:
                     <div class='gauge-bar-fill gauge-volume-fill' style='width:{pct_barra_volume}%;'></div>
                 </div>
                 <div class='gauge-meta'>Capacidade total: {CAPACIDADE_LITROS:,.0f} L</div>
-                <div class='{"dado-fresco" if dado_disponivel else "dado-antigo"}'>
-                    {"✔ Dado em tempo real" if dado_disponivel else "✘ Sem leitura recente"}
+                <div class='{"dado-fresco" if dado_fresco else "dado-antigo"}'>
+                    {"✔ Dado em tempo real" if dado_fresco else "✘ Sem leitura recente"}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -641,9 +668,9 @@ else:
                     tempo_str = f"há {segundos_atras//3600}h"
                 st.markdown(f"<div style='text-align:center; color:#4b5563; font-size:12px; letter-spacing:1px;'>Último sinal do dispositivo: <b style='color:#94a3b8;'>{tempo_str}</b></div>", unsafe_allow_html=True)
             except:
-                st.markdown("<div style='text-align:center; color:#22c55e; font-size:12px;'>Comunicação ativa.</div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align:center; color:#4b5563; font-size:12px;'>Não foi possível calcular o tempo do último sinal.</div>", unsafe_allow_html=True)
         else:
-            st.markdown("<div style='text-align:center; color:#22c55e; font-size:12px;'>Comunicação ativa via Firebase.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align:center; color:#ef4444; font-size:12px;'>Nenhum sinal recebido do dispositivo.</div>", unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
         col_btn = st.columns([1, 2, 1])
@@ -703,7 +730,8 @@ else:
 
             ultimo_p = res_diag.get("ultimo_pulso") if isinstance(res_diag, dict) else None
             status_bomba = db.reference("controle/bomba").get() or "—"
-        except:
+        except Exception as e:
+            st.error(f"Erro na leitura de diagnóstico: {e}")
             ultimo_p = None
             status_bomba = "Erro"
 
@@ -722,9 +750,9 @@ else:
                 seg_atras = int((agora_ms - float(ultimo_p)) / 1000)
                 ultimo_sinal_str = f"{seg_atras}s atrás" if seg_atras < 60 else f"{seg_atras//60}min atrás"
             except:
-                ultimo_sinal_str = "Sinal ativo"
+                ultimo_sinal_str = "Valor de timestamp inválido"
         else:
-            ultimo_sinal_str = "Conectado ao Firebase"
+            ultimo_sinal_str = "Nunca recebido"
 
         st.markdown(f"""
         <div class='diag-info-row'>
@@ -802,4 +830,4 @@ else:
         else:
             st.markdown("<div style='color:#4b5563; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v1.6 (Padrão ASB v83.0)
+# LAVANDERIA EXATA - v1.7 (erro de conexão exposto + frescor real restaurado)
