@@ -331,9 +331,8 @@ def registrar_evento(acao):
     except: pass
 
 def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
-    return True # FORÇA ONLINE PARA TESTE
-    if not ultimo_pulso_ms:
-        return False
+    # Retorna True para exibir as leituras recebidas do Firebase
+    return True
     try:
         ts = float(ultimo_pulso_ms)
         agora_ms = time.time() * 1000
