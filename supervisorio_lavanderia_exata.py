@@ -1,8 +1,3 @@
-# ============================================================================
-# RESERVATORIO LAVANDERIA EXATA - SUPERVISORIO PYTHON / STREAMLIT
-# Sensor hidrostatico 4-20mA + LCD 4x20 (I2C) no quadro + Firebase Realtime DB
-# ============================================================================
-
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
@@ -13,20 +8,14 @@ import time
 import pytz
 import urllib.parse
 
-# ============================================================================
-# SUPERVISORIO LAVANDERIA EXATA
-# Monitoramento de reservatorio de 30.000 L / 4,00 m de coluna d'agua
-# Adaptado a partir do template ASB Automacao Industrial
-# ============================================================================
-
-# --- 1. CONFIGURACAO DO RESERVATORIO (ajuste aqui se os dados mudarem) ---
+# --- 1. CONFIGURAÇÃO DO RESERVATÓRIO ---
 CAPACIDADE_LITROS = 30000.0   # capacidade total do reservatorio
 ALTURA_MAXIMA_M = 4.00        # coluna d'agua no reservatorio cheio (metros)
 NIVEL_BAIXO_PCT = 15          # % abaixo do qual dispara alerta de nivel baixo
 NIVEL_CHEIO_PCT = 95          # % acima do qual dispara alerta de reservatorio cheio
 
-# --- 2. CONFIGURACAO VISUAL ---
-st.set_page_config(page_title="Lavanderia Exata - Supervisorio", layout="wide", initial_sidebar_state="expanded")
+# --- 2. CONFIGURAÇÃO VISUAL ---
+st.set_page_config(page_title="Lavanderia Exata - Supervisório", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown("""
 <style>
@@ -38,21 +27,24 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
 }
 
+/* ── FUNDO GERAL ── */
 .stApp {
     background: #0a0e1a;
     color: #e0e6f0;
 }
 
+/* ── SIDEBAR ── */
 section[data-testid="stSidebar"] {
     background: #0d1220 !important;
     border-right: 1px solid #1e2d4a;
 }
 section[data-testid="stSidebar"] * { color: #c8d4e8 !important; }
-section[data-testid="stSidebar"] .stRadio label {
-    font-size: 14px !important;
+section[data-testid="stSidebar"] .stRadio label { 
+    font-size: 14px !important; 
     padding: 6px 0 !important;
 }
 
+/* ── TÍTULOS ── */
 .titulo-asb {
     font-family: 'Rajdhani', sans-serif;
     color: #ffffff;
@@ -78,6 +70,7 @@ section[data-testid="stSidebar"] .stRadio label {
     max-width: 400px;
 }
 
+/* ── CARDS GENÉRICOS ── */
 .asb-card {
     background: #111827;
     border: 1px solid #1e2d4a;
@@ -85,6 +78,7 @@ section[data-testid="stSidebar"] .stRadio label {
     padding: 24px;
 }
 
+/* ── SEÇÃO: HOME ── */
 .home-card {
     background: linear-gradient(135deg, #111827 0%, #0d1a2e 100%);
     border: 1px solid #1e3a5f;
@@ -96,13 +90,14 @@ section[data-testid="stSidebar"] .stRadio label {
 }
 .home-card:hover { border-color: #4a9eff; }
 .home-icon { font-size: 36px; margin-bottom: 14px; }
-.home-card h3 {
+.home-card h3 { 
     font-family: 'Rajdhani', sans-serif;
-    color: #ffffff; font-size: 20px; font-weight: 600;
+    color: #ffffff; font-size: 20px; font-weight: 600; 
     letter-spacing: 1px; margin-bottom: 10px;
 }
 .home-card p { color: #6b7fa3; font-size: 14px; line-height: 1.6; }
 
+/* Barra animada */
 .barra-wrap { height: 6px; border-radius: 6px; overflow: hidden; margin-top: 12px; background: #1e2d4a; }
 .barra-on { height: 100%; background: linear-gradient(90deg, #22c55e, #86efac, #22c55e); background-size: 200%; animation: slide 1.5s linear infinite; }
 .barra-repouso { height: 100%; background: linear-gradient(90deg, #fbbf24, #fde68a, #fbbf24); background-size: 200%; animation: slide 2s linear infinite; }
@@ -110,6 +105,7 @@ section[data-testid="stSidebar"] .stRadio label {
 .barra-inativa { height: 100%; background: #1e2d4a; }
 @keyframes slide { 0%{background-position:200% 0} 100%{background-position:0 0} }
 
+/* ── SEÇÃO: MEDIÇÃO ── */
 .gauge-card {
     background: #111827;
     border: 1px solid #1e2d4a;
@@ -143,13 +139,13 @@ section[data-testid="stSidebar"] .stRadio label {
 .gauge-nivel-fill { background: linear-gradient(90deg, #ef4444, #fbbf24, #22c55e); }
 .gauge-volume-fill { background: linear-gradient(90deg, #06b6d4, #3b82f6); }
 .gauge-meta { font-size: 12px; color: #4b5563; }
-.dado-antigo {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.3);
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 11px;
-    color: #ef4444;
+.dado-antigo { 
+    background: rgba(239,68,68,0.1); 
+    border: 1px solid rgba(239,68,68,0.3); 
+    border-radius: 6px; 
+    padding: 6px 12px; 
+    font-size: 11px; 
+    color: #ef4444; 
     margin-top: 8px;
     letter-spacing: 1px;
 }
@@ -164,31 +160,7 @@ section[data-testid="stSidebar"] .stRadio label {
     letter-spacing: 1px;
 }
 
-.alerta-baixo {
-    background: rgba(239,68,68,0.1);
-    border: 1px solid rgba(239,68,68,0.4);
-    border-radius: 10px;
-    padding: 14px 20px;
-    margin-bottom: 20px;
-    text-align: center;
-    color: #ef4444;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 1px;
-}
-.alerta-cheio {
-    background: rgba(34,197,94,0.1);
-    border: 1px solid rgba(34,197,94,0.4);
-    border-radius: 10px;
-    padding: 14px 20px;
-    margin-bottom: 20px;
-    text-align: center;
-    color: #22c55e;
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 1px;
-}
-
+/* ── SEÇÃO: DIAGNÓSTICO ── */
 .diag-status-ok {
     background: rgba(34,197,94,0.08);
     border: 1px solid #22c55e;
@@ -229,6 +201,7 @@ section[data-testid="stSidebar"] .stRadio label {
 }
 .diag-info-label { font-weight: 600; color: #e2e8f0; min-width: 160px; }
 
+/* Streamlit button overrides por contexto */
 div[data-testid="stButton"] > button {
     width: 100%;
     font-family: 'Rajdhani', sans-serif !important;
@@ -240,11 +213,14 @@ div[data-testid="stButton"] > button {
     padding: 14px 20px !important;
     transition: all 0.2s ease !important;
 }
+
+/* Botão padrão azul */
 div[data-testid="stButton"] > button:not([kind]) {
     background: linear-gradient(135deg, #1e3a5f, #4a9eff) !important;
     color: white !important;
 }
 
+/* ── HEADER SEÇÃO ── */
 .section-header {
     font-family: 'Rajdhani', sans-serif;
     font-size: 28px;
@@ -257,26 +233,28 @@ div[data-testid="stButton"] > button:not([kind]) {
     margin-bottom: 24px;
 }
 
-.chat-container {
-    background: #0d1220;
+/* ── CHAT LOGS ── */
+.chat-container { 
+    background: #0d1220; 
     border: 1px solid #1e2d4a;
-    border-radius: 12px;
-    max-height: 420px;
-    overflow-y: auto;
+    border-radius: 12px; 
+    max-height: 420px; 
+    overflow-y: auto; 
     padding: 16px;
 }
-.msg-balao {
-    background: #111827;
-    border-left: 3px solid #4a9eff;
-    border-radius: 8px;
-    padding: 10px 14px;
-    margin-bottom: 8px;
-    font-size: 13px;
+.msg-balao { 
+    background: #111827; 
+    border-left: 3px solid #4a9eff; 
+    border-radius: 8px; 
+    padding: 10px 14px; 
+    margin-bottom: 8px; 
+    font-size: 13px; 
     color: #c8d4e8;
 }
 .msg-balao b { color: #4a9eff; }
 .msg-balao small { color: #4b5563; }
 
+/* ── CARD USUÁRIO ── */
 .card-contato {
     background: #111827;
     border: 1px solid #1e2d4a;
@@ -288,6 +266,7 @@ div[data-testid="stButton"] > button:not([kind]) {
     font-size: 14px;
 }
 
+/* ── MODO AUTO ── */
 .auto-info {
     background: rgba(74,158,255,0.07);
     border: 1px solid rgba(74,158,255,0.25);
@@ -298,6 +277,7 @@ div[data-testid="stButton"] > button:not([kind]) {
     margin-bottom: 16px;
 }
 
+/* Inputs */
 .stTextInput input, .stNumberInput input {
     background: #111827 !important;
     border: 1px solid #1e2d4a !important;
@@ -309,7 +289,7 @@ div[data-testid="stButton"] > button:not([kind]) {
 """, unsafe_allow_html=True)
 
 
-# --- 3. FUNCOES CORE ---
+# --- 3. FUNÇÕES CORE ---
 def obter_hora_brasilia():
     return datetime.now(pytz.timezone('America/Sao_Paulo'))
 
@@ -347,20 +327,18 @@ def registrar_evento(acao):
     agora_f = obter_hora_brasilia().strftime('%d/%m/%Y %H:%M:%S')
     try:
         db.reference("historico_acoes").push({"data": agora_f, "usuario": usuario, "acao": acao})
-        enviar_email(f"Lavanderia Exata: {acao}", f"Evento: {acao}\nUsuario: {usuario}\nData: {agora_f}")
+        enviar_email(f"Lavanderia Exata: {acao}", f"Evento: {acao}\nUsuário: {usuario}\nData: {agora_f}")
     except: pass
 
-def checar_dado_fresco(ultimo_pulso_val, tolerancia_segundos=120):
-    """Retorna True se o dado foi atualizado recentemente, tratando inteiro e float."""
-    if not ultimo_pulso_val:
+def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
+    """Retorna True se o dado foi atualizado recentemente (idêntico à versão v83.0)."""
+    if not ultimo_pulso_ms:
         return False
     try:
-        ultimo_ts = float(ultimo_pulso_val)
-        if ultimo_ts > 100000000000:
-            ultimo_ts /= 1000.0
-        agora_ts = time.time()
-        diferenca = abs(agora_ts - ultimo_ts)
-        return diferenca < tolerancia_segundos
+        ts = float(ultimo_pulso_ms)
+        agora_ms = time.time() * 1000
+        # Se timestamp vier do servidor Firebase em ms (13 dígitos)
+        return (agora_ms - ts) < (tolerancia_segundos * 1000)
     except:
         return False
 
@@ -378,14 +356,14 @@ for k, v in defaults.items():
 if not st.session_state["logado"]:
     conectar_firebase()
     st.markdown("<div class='titulo-asb'>Lavanderia Exata</div>", unsafe_allow_html=True)
-    st.markdown("<div class='subtitulo-asb'>Supervisorio de Reservatorio · IoT 2026</div>", unsafe_allow_html=True)
+    st.markdown("<div class='subtitulo-asb'>Supervisório de Reservatório · IoT 2026</div>", unsafe_allow_html=True)
     st.markdown("<div class='divider-blue'></div>", unsafe_allow_html=True)
 
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         with st.container():
             st.markdown("<div class='asb-card'>", unsafe_allow_html=True)
-            u = st.text_input("Usuario", placeholder="seu login")
+            u = st.text_input("Usuário", placeholder="seu login")
             p = st.text_input("Senha", type="password", placeholder="••••••••")
             if st.button("ACESSAR SISTEMA"):
                 if u == "admin" and p == "exata2026":
@@ -400,53 +378,54 @@ if not st.session_state["logado"]:
                                     st.session_state.update({"logado": True, "user_nome": v_u['nome'], "is_admin": False})
                                     st.rerun()
                     except: pass
-                    st.error("Credenciais invalidas.")
+                    st.error("Credenciais inválidas.")
             st.markdown("</div>", unsafe_allow_html=True)
 
 # --- 6. PAINEL PRINCIPAL ---
 else:
     conectar_firebase()
-
+    
+    # SIDEBAR
     with st.sidebar:
         st.markdown(f"""
         <div style='text-align:center; padding: 16px 0 8px 0;'>
-            <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700;
+            <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; 
                         color:#4a9eff; letter-spacing:2px;'>LAVANDERIA EXATA</div>
-            <div style='font-size:11px; color:#4b5563; letter-spacing:1px;'>SUPERVISORIO DE RESERVATORIO</div>
+            <div style='font-size:11px; color:#4b5563; letter-spacing:1px;'>SUPERVISÓRIO DE RESERVATÓRIO</div>
             <div style='margin-top:10px; font-size:13px; color:#94a3b8;'>
                 👤 {st.session_state.get("user_nome","")}</div>
         </div>
         """, unsafe_allow_html=True)
         st.divider()
 
-        opts = ["🏠 Home", "🚰 Controle da Bomba", "💧 Nivel do Reservatorio", "📊 Relatorios", "🛠️ Diagnostico"]
-        if st.session_state["is_admin"]: opts.append("👥 Gestao de Usuarios")
-        menu = st.radio("Navegacao", opts, label_visibility="collapsed")
+        opts = ["🏠 Home", "🚰 Controle da Bomba", "💧 Nível do Reservatório", "📊 Relatórios", "🛠️ Diagnóstico"]
+        if st.session_state["is_admin"]: opts.append("👥 Gestão de Usuários")
+        menu = st.radio("Navegação", opts, label_visibility="collapsed")
 
         st.divider()
-        st.session_state["email_ativo"] = st.toggle("📧 Notificacoes por Email", value=st.session_state["email_ativo"])
+        st.session_state["email_ativo"] = st.toggle("📧 Notificações por Email", value=st.session_state["email_ativo"])
 
         num_wa = st.text_input("WhatsApp Suporte (com DDD)", placeholder="5511999999999")
         if num_wa:
-            txt = urllib.parse.quote(f"Ola, sou {st.session_state['user_nome']}. Reportando ocorrencia no reservatorio da Lavanderia Exata.")
+            txt = urllib.parse.quote(f"Olá, sou {st.session_state['user_nome']}. Reportando ocorrência no reservatório da Lavanderia Exata.")
             st.markdown(f'<a href="https://wa.me/{num_wa}?text={txt}" target="_blank" style="color:#4a9eff; font-size:13px;">💬 Abrir Suporte WhatsApp</a>', unsafe_allow_html=True)
 
         st.divider()
-        if st.button("⏻ Encerrar Sessao"):
+        if st.button("⏻ Encerrar Sessão"):
             st.session_state["logado"] = False
             st.rerun()
 
     # ─── HOME ───────────────────────────────────────────────────────────────
     if menu == "🏠 Home":
         st.markdown("<div class='titulo-asb'>Lavanderia Exata</div>", unsafe_allow_html=True)
-        st.markdown("<div class='subtitulo-asb'>Monitoramento em Tempo Real do Reservatorio · 30.000 L</div>", unsafe_allow_html=True)
+        st.markdown("<div class='subtitulo-asb'>Monitoramento em Tempo Real do Reservatório · 30.000 L</div>", unsafe_allow_html=True)
         st.markdown("<div class='divider-blue'></div>", unsafe_allow_html=True)
 
         c1, c2, c3 = st.columns(3, gap="medium")
         cards = [
-            ("💧", "Nivel em Tempo Real", "Monitoramento continuo do nivel do reservatorio via sensor hidrostatico 4-20mA, com atualizacao a cada poucos segundos."),
-            ("🚰", "Controle da Bomba", "Acionamento remoto da bomba de recalque, manual ou automatico por nivel, com registro de auditoria."),
-            ("🔔", "Alertas Automaticos", "Notificacoes por email quando o reservatorio atinge nivel critico (baixo ou cheio), evitando falta de agua ou transbordamento."),
+            ("💧", "Nível em Tempo Real", "Monitoramento contínuo do nível do reservatório via sensor hidrostático 4-20mA, com atualização a cada poucos segundos."),
+            ("🚰", "Controle da Bomba", "Acionamento remoto da bomba de recalque, manual ou automático por nível, com registro de auditoria."),
+            ("🔔", "Alertas Automáticos", "Notificações por e-mail quando o reservatório atinge nível crítico (baixo ou cheio), evitando falta de água ou transbordamento."),
         ]
         for col, (icon, title, desc) in zip([c1, c2, c3], cards):
             with col:
@@ -461,7 +440,7 @@ else:
     elif menu == "🚰 Controle da Bomba":
         st.markdown("<div class='section-header'>Controle da Bomba de Recalque</div>", unsafe_allow_html=True)
 
-        modo = st.radio("Modo de Operacao", ["MANUAL", "AUTOMATICO"], horizontal=True)
+        modo = st.radio("Modo de Operação", ["MANUAL", "AUTOMÁTICO"], horizontal=True)
         st.session_state["modo_operacao"] = modo
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -478,7 +457,7 @@ else:
 
             st.markdown(f"""
             <div style='text-align:center; margin-bottom:24px;'>
-                <span style='background:rgba(0,0,0,0.3); border:1px solid {cor};
+                <span style='background:rgba(0,0,0,0.3); border:1px solid {cor}; 
                     border-radius:30px; padding:8px 24px; font-family:Rajdhani,sans-serif;
                     font-size:16px; font-weight:700; letter-spacing:2px; color:{cor};'>
                     ESTADO ATUAL: {label}
@@ -495,7 +474,7 @@ else:
                     border:{"2px solid #22c55e" if ativo else "1px solid #22c55e40"};
                     border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
                     <div style='font-size:32px; margin-bottom:8px;'>💧</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700;
+                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; 
                         letter-spacing:2px; color:#22c55e;'>LIGAR BOMBA</div>
                     <div class='barra-wrap' style='margin-top:14px;'>
                         <div class='{"barra-on" if ativo else "barra-inativa"}'></div>
@@ -547,63 +526,51 @@ else:
 
         else:
             st.markdown("""
-            <div class='auto-info'>🤖 <b>MODO AUTOMATICO ATIVO</b> — a bomba liga/desliga sozinha
-            conforme o nivel do reservatorio (esta logica roda no proprio ESP32, nao aqui no painel web).
-            Configure os limites de nivel diretamente no codigo do ESP32.</div>
+            <div class='auto-info'>🤖 <b>MODO AUTOMÁTICO ATIVO</b> — a bomba liga/desliga sozinha
+            conforme o nível do reservatório (esta lógica roda no próprio ESP32).</div>
             """, unsafe_allow_html=True)
             st.markdown(f"""
             <div class='diag-info-row'>
-                <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span>{NIVEL_BAIXO_PCT}% do reservatorio</span>
+                <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span>{NIVEL_BAIXO_PCT}% do reservatório</span>
             </div>
             <div class='diag-info-row'>
-                <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span>{NIVEL_CHEIO_PCT}% do reservatorio</span>
+                <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span>{NIVEL_CHEIO_PCT}% do reservatório</span>
             </div>
             """, unsafe_allow_html=True)
 
-    # ─── NIVEL DO RESERVATORIO ──────────────────────────────────────────────
-    elif menu == "💧 Nivel do Reservatorio":
-        st.markdown("<div class='section-header'>Nivel do Reservatorio · 30.000 L</div>", unsafe_allow_html=True)
+    # ─── NÍVEL DO RESERVATÓRIO ──────────────────────────────────────────────
+    elif menu == "💧 Nível do Reservatório":
+        st.markdown("<div class='section-header'>Nível do Reservatório · 30.000 L</div>", unsafe_allow_html=True)
 
         try:
-            dados_res = db.reference("reservatorio").get() or {}
-            altura_m = dados_res.get("nivel_metros")
-            volume_l = dados_res.get("volume_litros")
-            percentual = dados_res.get("percentual")
-            falha_sensor = dados_res.get("falha_sensor")
-            ultimo_pulso = dados_res.get("ultimo_pulso")
+            altura_m = db.reference("reservatorio/nivel_metros").get()
+            volume_l = db.reference("reservatorio/volume_litros").get()
+            percentual = db.reference("reservatorio/percentual").get()
+            falha_sensor = db.reference("reservatorio/falha_sensor").get()
+            ultimo_pulso = db.reference("reservatorio/ultimo_pulso").get()
         except:
             altura_m, volume_l, percentual, falha_sensor, ultimo_pulso = None, None, None, None, None
 
-        dado_fresco = checar_dado_fresco(ultimo_pulso, tolerancia_segundos=120)
+        # Verificar se dados são frescos (atualizados nos últimos 60 segundos)
+        dado_fresco = checar_dado_fresco(ultimo_pulso, tolerancia_segundos=60)
 
+        # Tratar ausência de dados reais
         altura_exibir = altura_m if (altura_m is not None and dado_fresco and not falha_sensor) else None
         volume_exibir = volume_l if (volume_l is not None and dado_fresco and not falha_sensor) else None
         pct_exibir = percentual if (percentual is not None and dado_fresco and not falha_sensor) else None
 
-        pct_barra_nivel = min(max(pct_exibir or 0, 0), 100)
-        pct_barra_volume = min(max((volume_exibir or 0) / CAPACIDADE_LITROS * 100, 0), 100)
+        pct_barra_nivel = min(max(pct_exibir or 0, 0), 100) if dado_fresco and pct_exibir is not None else 0
+        pct_barra_volume = min(max(((volume_exibir or 0) / CAPACIDADE_LITROS) * 100, 0), 100) if dado_fresco and volume_exibir is not None else 0
 
         if not dado_fresco:
             st.markdown("""
             <div style='background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.4);
                 border-radius:10px; padding:14px 20px; margin-bottom:20px; text-align:center;
                 color:#ef4444; font-size:14px; font-weight:600; letter-spacing:1px;'>
-                ⚠️ ATENCAO: Dispositivo sem comunicacao — dados podem estar desatualizados.
-                Verifique a conexao do ESP32 na aba Diagnostico.
+                ⚠️ ATENÇÃO: Dispositivo sem comunicação — dados podem estar desatualizados.
+                Verifique a conexão do ESP32 na aba Diagnóstico.
             </div>
             """, unsafe_allow_html=True)
-        elif falha_sensor:
-            st.markdown("""
-            <div style='background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.4);
-                border-radius:10px; padding:14px 20px; margin-bottom:20px; text-align:center;
-                color:#ef4444; font-size:14px; font-weight:600; letter-spacing:1px;'>
-                ⚠️ FALHA NO SENSOR — cabo rompido ou perda de sinal. Verifique a fiacao do sensor hidrostatico.
-            </div>
-            """, unsafe_allow_html=True)
-        elif pct_exibir is not None and pct_exibir <= NIVEL_BAIXO_PCT:
-            st.markdown(f"<div class='alerta-baixo'>🔴 RESERVATORIO BAIXO — nivel em {pct_exibir:.0f}%</div>", unsafe_allow_html=True)
-        elif pct_exibir is not None and pct_exibir >= NIVEL_CHEIO_PCT:
-            st.markdown(f"<div class='alerta-cheio'>🟢 RESERVATORIO CHEIO — nivel em {pct_exibir:.0f}%</div>", unsafe_allow_html=True)
 
         col1, col2 = st.columns(2, gap="large")
 
@@ -611,13 +578,13 @@ else:
             valor_pct = f"{pct_exibir:.0f}" if pct_exibir is not None else "—"
             st.markdown(f"""
             <div class='gauge-card'>
-                <div class='gauge-label'>Nivel do Reservatorio</div>
+                <div class='gauge-label'>Nível do Reservatório</div>
                 <div class='gauge-value' style='color:#4a9eff;'>{valor_pct}</div>
                 <div class='gauge-unit'>%</div>
                 <div class='gauge-bar-bg'>
                     <div class='gauge-bar-fill gauge-nivel-fill' style='width:{pct_barra_nivel}%;'></div>
                 </div>
-                <div class='gauge-meta'>Coluna d'agua: {f"{altura_exibir:.2f} m" if altura_exibir is not None else "—"} de {ALTURA_MAXIMA_M:.2f} m</div>
+                <div class='gauge-meta'>Coluna d'água: {f"{altura_exibir:.2f} m" if altura_exibir is not None else "—"} de {ALTURA_MAXIMA_M:.2f} m</div>
                 <div class='{"dado-fresco" if dado_fresco and pct_exibir is not None else "dado-antigo"}'>
                     {"✔ Dado em tempo real" if dado_fresco and pct_exibir is not None else "✘ Sem leitura recente"}
                 </div>
@@ -643,20 +610,19 @@ else:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # Última atualização com timestamp (idêntico ao v83.0)
         if ultimo_pulso:
             try:
-                p_ts = float(ultimo_pulso)
-                if p_ts > 100000000000: p_ts /= 1000.0
-                segundos_atras = int(abs(time.time() - p_ts))
+                segundos_atras = int((time.time() * 1000 - float(ultimo_pulso)) / 1000)
                 if segundos_atras < 60:
-                    tempo_str = f"ha {segundos_atras}s"
+                    tempo_str = f"há {segundos_atras}s"
                 elif segundos_atras < 3600:
-                    tempo_str = f"ha {segundos_atras//60}min"
+                    tempo_str = f"há {segundos_atras//60}min"
                 else:
-                    tempo_str = f"ha {segundos_atras//3600}h"
-                st.markdown(f"<div style='text-align:center; color:#4b5563; font-size:12px; letter-spacing:1px;'>Ultimo sinal do dispositivo: <b style='color:#94a3b8;'>{tempo_str}</b></div>", unsafe_allow_html=True)
+                    tempo_str = f"há {segundos_atras//3600}h"
+                st.markdown(f"<div style='text-align:center; color:#4b5563; font-size:12px; letter-spacing:1px;'>Último sinal do dispositivo: <b style='color:#94a3b8;'>{tempo_str}</b></div>", unsafe_allow_html=True)
             except:
-                st.markdown("<div style='text-align:center; color:#ef4444; font-size:12px;'>Aguardando leitura do timestamp...</div>", unsafe_allow_html=True)
+                st.markdown("<div style='text-align:center; color:#ef4444; font-size:12px;'>Aguardando sinal válido...</div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='text-align:center; color:#ef4444; font-size:12px;'>Nenhum sinal recebido do dispositivo.</div>", unsafe_allow_html=True)
 
@@ -664,7 +630,7 @@ else:
         col_btn = st.columns([1, 2, 1])
         with col_btn[1]:
             if st.button("🔄 ATUALIZAR AGORA", use_container_width=True):
-                if dado_fresco and not falha_sensor and altura_m is not None:
+                if dado_fresco and altura_m is not None:
                     try:
                         db.reference("historico_sensores").push({
                             "altura_m": altura_m, "volume_l": volume_l, "percentual": percentual,
@@ -673,14 +639,14 @@ else:
                     except: pass
                 st.rerun()
 
-    # ─── RELATORIOS ─────────────────────────────────────────────────────────
-    elif menu == "📊 Relatorios":
-        st.markdown("<div class='section-header'>Historico de Atividades</div>", unsafe_allow_html=True)
+    # ─── RELATÓRIOS ─────────────────────────────────────────────────────────
+    elif menu == "📊 Relatórios":
+        st.markdown("<div class='section-header'>Histórico de Atividades</div>", unsafe_allow_html=True)
 
         if st.session_state["is_admin"]:
             col_lixo = st.columns([1, 2, 1])
             with col_lixo[1]:
-                if st.button("🗑️ LIMPAR HISTORICO", use_container_width=True):
+                if st.button("🗑️ LIMPAR HISTÓRICO", use_container_width=True):
                     try:
                         db.reference("historico_acoes").delete()
                         db.reference("historico_sensores").delete()
@@ -699,38 +665,38 @@ else:
                 v = logs[k]
                 st.markdown(f"""
                 <div class='msg-balao'>
-                    <b>{v.get("usuario","?")}</b>: {v.get("acao","?")}
+                    <b>{v.get("usuario","?")}</b>: {v.get("acao","?")} 
                     <br><small>🕐 {v.get("data","")}</small>
                 </div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown("<div style='text-align:center; color:#4b5563; padding:40px;'>Nenhum registro encontrado.</div>", unsafe_allow_html=True)
 
-    # ─── DIAGNOSTICO ────────────────────────────────────────────────────────
-    elif menu == "🛠️ Diagnostico":
-        st.markdown("<div class='section-header'>Diagnostico do Sistema</div>", unsafe_allow_html=True)
+    # ─── DIAGNÓSTICO ────────────────────────────────────────────────────────
+    elif menu == "🛠️ Diagnóstico":
+        st.markdown("<div class='section-header'>Diagnóstico do Sistema</div>", unsafe_allow_html=True)
 
         try:
-            dados_diag = db.reference("reservatorio").get() or {}
-            ultimo_p = dados_diag.get("ultimo_pulso")
+            ultimo_p = db.reference("reservatorio/ultimo_pulso").get()
             status_bomba = db.reference("controle/bomba").get() or "—"
         except:
             ultimo_p = None
             status_bomba = "Erro"
 
-        online = checar_dado_fresco(ultimo_p, tolerancia_segundos=120)
+        online = checar_dado_fresco(ultimo_p, tolerancia_segundos=45)
 
+        # Status principal
         if online:
-            st.markdown("<div class='diag-status-ok'>✅ SISTEMA ONLINE — Comunicacao Ativa</div>", unsafe_allow_html=True)
+            st.markdown("<div class='diag-status-ok'>✅ SISTEMA ONLINE — Comunicação Ativa</div>", unsafe_allow_html=True)
         else:
-            st.markdown("<div class='diag-status-off'>⚠️ SISTEMA OFFLINE — Sem Comunicacao</div>", unsafe_allow_html=True)
+            st.markdown("<div class='diag-status-off'>⚠️ SISTEMA OFFLINE — Sem Comunicação</div>", unsafe_allow_html=True)
 
+        # Informações de diagnóstico
+        agora_ms = time.time() * 1000
         if ultimo_p:
             try:
-                p_ts = float(ultimo_p)
-                if p_ts > 100000000000: p_ts /= 1000.0
-                seg_atras = int(abs(time.time() - p_ts))
-                ultimo_sinal_str = f"{seg_atras}s atras" if seg_atras < 60 else f"{seg_atras//60}min atras"
+                seg_atras = int((agora_ms - float(ultimo_p)) / 1000)
+                ultimo_sinal_str = f"{seg_atras}s atrás" if seg_atras < 60 else f"{seg_atras//60}min atrás"
             except:
                 ultimo_sinal_str = "Processando..."
         else:
@@ -739,23 +705,23 @@ else:
         st.markdown(f"""
         <div class='diag-info-row'>
             <span>📡</span>
-            <span class='diag-info-label'>Ultimo Heartbeat:</span>
+            <span class='diag-info-label'>Último Heartbeat:</span>
             <span>{ultimo_sinal_str}</span>
         </div>
         <div class='diag-info-row'>
-            <span>🚰</span>
+            <span>🔌</span>
             <span class='diag-info-label'>Estado da Bomba:</span>
             <span>{status_bomba}</span>
         </div>
         <div class='diag-info-row'>
             <span>🕐</span>
             <span class='diag-info-label'>Hora do Servidor:</span>
-            <span>{obter_hora_brasilia().strftime('%d/%m/%Y %H:%M:%S')} (Brasilia)</span>
+            <span>{obter_hora_brasilia().strftime('%d/%m/%Y %H:%M:%S')} (Brasília)</span>
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:#94a3b8; letter-spacing:2px; margin-bottom:14px;'>ACOES DE MANUTENCAO</div>", unsafe_allow_html=True)
+        st.markdown("<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:#94a3b8; letter-spacing:2px; margin-bottom:14px;'>AÇÕES DE MANUTENÇÃO</div>", unsafe_allow_html=True)
 
         d1, d2 = st.columns(2, gap="medium")
         with d1:
@@ -767,10 +733,10 @@ else:
             if st.button("📡 RECONFIGURAR WI-FI", use_container_width=True):
                 try: db.reference("controle/restart").set(True)
                 except: pass
-                st.success("Comando de reconfiguracao enviado.")
+                st.success("Comando de reconfiguração enviado.")
 
-    # ─── GESTAO DE USUARIOS ─────────────────────────────────────────────────
-    elif menu == "👥 Gestao de Usuarios" and st.session_state["is_admin"]:
+    # ─── GESTÃO DE USUÁRIOS ─────────────────────────────────────────────────
+    elif menu == "👥 Gestão de Usuários" and st.session_state["is_admin"]:
         st.markdown("<div class='section-header'>Gerenciamento de Operadores</div>", unsafe_allow_html=True)
 
         with st.form("cad_u"):
@@ -804,7 +770,7 @@ else:
                 st.markdown(f"""
                 <div class='card-contato'>
                     🟢 <b style='color:#e2e8f0;'>{v_u['nome']}</b><br>
-                    <span style='color:#94a3b8;'>Usuario:</span> {v_u['login']} &nbsp;|&nbsp;
+                    <span style='color:#94a3b8;'>Usuário:</span> {v_u['login']} &nbsp;|&nbsp;
                     <span style='color:#94a3b8;'>Senha:</span> {v_u['senha']}<br>
                     <small style='color:#4b5563;'>Cadastrado em: {v_u.get('data','—')}</small>
                 </div>
@@ -812,4 +778,4 @@ else:
         else:
             st.markdown("<div style='color:#4b5563; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - Supervisorio de Reservatorio v1.3
+# LAVANDERIA EXATA - v1.4 (Padrão ASB v83.0)
