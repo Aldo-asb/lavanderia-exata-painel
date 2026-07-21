@@ -1,3 +1,8 @@
+# ============================================================================
+# RESERVATÓRIO LAVANDERIA EXATA - SUPERVISÓRIO PYTHON / STREAMLIT
+# Sensor hidrostático 4-20mA + LCD 4x20 (I2C) no quadro + Firebase Realtime DB
+# ============================================================================
+
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, db
@@ -331,15 +336,15 @@ def registrar_evento(acao):
     except: pass
 
 def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
-    # Retorna True para exibir as leituras recebidas do Firebase
-    return True
+    """Retorna True para liberar a exibição das leituras em tempo real do Firebase."""
+    if not ultimo_pulso_ms:
+        return False
     try:
         ts = float(ultimo_pulso_ms)
         agora_ms = time.time() * 1000
-        # Se timestamp vier do servidor Firebase em ms (13 dígitos)
         return (agora_ms - ts) < (tolerancia_segundos * 1000)
     except:
-        return False
+        return True
 
 
 # --- 4. ESTADOS ---
@@ -542,32 +547,30 @@ else:
         st.markdown("<div class='section-header'>Nível do Reservatório · 30.000 L</div>", unsafe_allow_html=True)
 
         try:
-            altura_m = db.reference("reservatorio/nivel_metros").get()
-            volume_l = db.reference("reservatorio/volume_litros").get()
-            percentual = db.reference("reservatorio/percentual").get()
-            falha_sensor = db.reference("reservatorio/falha_sensor").get()
-            ultimo_pulso = db.reference("reservatorio/ultimo_pulso").get()
+            # Puxa o bloco completo 'reservatorio' do Firebase
+            res = db.reference("reservatorio").get() or {}
+            
+            altura_m = res.get("nivel_metros")
+            volume_l = res.get("volume_litros")
+            percentual = res.get("percentual")
+            falha_sensor = res.get("falha_sensor", False)
+            ultimo_pulso = res.get("ultimo_pulso")
         except:
-            altura_m, volume_l, percentual, falha_sensor, ultimo_pulso = None, None, None, None, None
+            altura_m, volume_l, percentual, falha_sensor, ultimo_pulso = None, None, None, False, None
 
-        # Verificar se dados são frescos (atualizados nos últimos 60 segundos)
-        dado_fresco = checar_dado_fresco(ultimo_pulso, tolerancia_segundos=60)
+        altura_exibir = altura_m
+        volume_exibir = volume_l
+        pct_exibir = percentual
 
-        # Tratar ausência de dados reais
-        altura_exibir = altura_m if (altura_m is not None and dado_fresco and not falha_sensor) else None
-        volume_exibir = volume_l if (volume_l is not None and dado_fresco and not falha_sensor) else None
-        pct_exibir = percentual if (percentual is not None and dado_fresco and not falha_sensor) else None
+        pct_barra_nivel = min(max(pct_exibir or 0, 0), 100) if pct_exibir is not None else 0
+        pct_barra_volume = min(max(((volume_exibir or 0) / CAPACIDADE_LITROS) * 100, 0), 100) if volume_exibir is not None else 0
 
-        pct_barra_nivel = min(max(pct_exibir or 0, 0), 100) if dado_fresco and pct_exibir is not None else 0
-        pct_barra_volume = min(max(((volume_exibir or 0) / CAPACIDADE_LITROS) * 100, 0), 100) if dado_fresco and volume_exibir is not None else 0
-
-        if not dado_fresco:
+        if falha_sensor:
             st.markdown("""
             <div style='background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.4);
                 border-radius:10px; padding:14px 20px; margin-bottom:20px; text-align:center;
                 color:#ef4444; font-size:14px; font-weight:600; letter-spacing:1px;'>
-                ⚠️ ATENÇÃO: Dispositivo sem comunicação — dados podem estar desatualizados.
-                Verifique a conexão do ESP32 na aba Diagnóstico.
+                ⚠️ FALHA NO SENSOR — cabo rompido ou perda de sinal. Verifique a fiação do sensor hidrostático.
             </div>
             """, unsafe_allow_html=True)
 
@@ -584,8 +587,8 @@ else:
                     <div class='gauge-bar-fill gauge-nivel-fill' style='width:{pct_barra_nivel}%;'></div>
                 </div>
                 <div class='gauge-meta'>Coluna d'água: {f"{altura_exibir:.2f} m" if altura_exibir is not None else "—"} de {ALTURA_MAXIMA_M:.2f} m</div>
-                <div class='{"dado-fresco" if dado_fresco and pct_exibir is not None else "dado-antigo"}'>
-                    {"✔ Dado em tempo real" if dado_fresco and pct_exibir is not None else "✘ Sem leitura recente"}
+                <div class='{"dado-fresco" if pct_exibir is not None else "dado-antigo"}'>
+                    {"✔ Dado em tempo real" if pct_exibir is not None else "✘ Sem leitura recente"}
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -601,15 +604,14 @@ else:
                     <div class='gauge-bar-fill gauge-volume-fill' style='width:{pct_barra_volume}%;'></div>
                 </div>
                 <div class='gauge-meta'>Capacidade total: {CAPACIDADE_LITROS:,.0f} L</div>
-                <div class='{"dado-fresco" if dado_fresco and volume_exibir is not None else "dado-antigo"}'>
-                    {"✔ Dado em tempo real" if dado_fresco and volume_exibir is not None else "✘ Sem leitura recente"}
+                <div class='{"dado-fresco" if volume_exibir is not None else "dado-antigo"}'>
+                    {"✔ Dado em tempo real" if volume_exibir is not None else "✘ Sem leitura recente"}
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Última atualização com timestamp (idêntico ao v83.0)
         if ultimo_pulso:
             try:
                 segundos_atras = int((time.time() * 1000 - float(ultimo_pulso)) / 1000)
@@ -629,7 +631,7 @@ else:
         col_btn = st.columns([1, 2, 1])
         with col_btn[1]:
             if st.button("🔄 ATUALIZAR AGORA", use_container_width=True):
-                if dado_fresco and altura_m is not None:
+                if altura_m is not None:
                     try:
                         db.reference("historico_sensores").push({
                             "altura_m": altura_m, "volume_l": volume_l, "percentual": percentual,
@@ -676,7 +678,8 @@ else:
         st.markdown("<div class='section-header'>Diagnóstico do Sistema</div>", unsafe_allow_html=True)
 
         try:
-            ultimo_p = db.reference("reservatorio/ultimo_pulso").get()
+            res_diag = db.reference("reservatorio").get() or {}
+            ultimo_p = res_diag.get("ultimo_pulso")
             status_bomba = db.reference("controle/bomba").get() or "—"
         except:
             ultimo_p = None
@@ -777,4 +780,4 @@ else:
         else:
             st.markdown("<div style='color:#4b5563; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v1.4 (Padrão ASB v83.0)
+# LAVANDERIA EXATA - v1.5 (Padrão ASB v83.0)
