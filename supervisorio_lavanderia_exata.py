@@ -16,135 +16,172 @@ import urllib.parse
 # --- 1. CONFIGURAÇÃO DO RESERVATÓRIO ---
 CAPACIDADE_LITROS = 30000.0   # capacidade total do reservatorio
 ALTURA_MAXIMA_M = 4.00        # coluna d'agua no reservatorio cheio (metros)
-NIVEL_BAIXO_PCT = 15          # % abaixo do qual dispara alerta de nivel baixo
-NIVEL_CHEIO_PCT = 95          # % acima do qual dispara alerta de reservatorio cheio
+NIVEL_BAIXO_PCT = 15          # % abaixo do qual dispara alerta de nivel baixo (email)
+NIVEL_CHEIO_PCT = 95          # % acima do qual dispara alerta de reservatorio cheio (email)
 
-# --- 2. CONFIGURAÇÃO VISUAL ---
+# Faixa de acionamento da BOMBA (confirmada com o cliente) - precisa ser
+# IDENTICA aos valores nivelBaixoPct/nivelCheioPct no .ino, pois quem decide
+# de fato é o ESP32; aqui é só para exibir a faixa no painel.
+BOMBA_LIGA_PCT = 70     # liga a bomba abaixo disso
+BOMBA_DESLIGA_PCT = 95  # desliga a bomba acima disso
+
+# --- 2. CONFIGURAÇÃO VISUAL (TEMA CLARO/ESCURO) ---
 st.set_page_config(page_title="Lavanderia Exata - Supervisório", layout="wide", initial_sidebar_state="expanded")
 
-st.markdown("""
+# Lido cedo para poder montar a paleta de cores certa antes de injetar o CSS.
+# Na primeirissima execucao (session_state ainda vazio) cai no padrao (escuro),
+# que e o mesmo valor usado em "defaults" mais abaixo.
+tema_claro = st.session_state.get("tema_claro", False)
+
+if tema_claro:
+    COR_BG = "#f4f6fb"
+    COR_TEXTO = "#1e293b"
+    COR_SIDEBAR_BG = "#ffffff"
+    COR_BORDA = "#dbe3f0"
+    COR_CARD_BG = "#ffffff"
+    COR_CARD_BG2 = "#eef2fb"
+    COR_MUTED = "#64748b"
+    COR_MUTED2 = "#94a3b8"
+    COR_ACCENT = "#2563eb"
+    COR_ACCENT_RGB = "37,99,235"
+    COR_TITULO = "#0f172a"
+    COR_INPUT_BG = "#ffffff"
+else:
+    COR_BG = "#0a0e1a"
+    COR_TEXTO = "#e0e6f0"
+    COR_SIDEBAR_BG = "#0d1220"
+    COR_BORDA = "#1e2d4a"
+    COR_CARD_BG = "#111827"
+    COR_CARD_BG2 = "#0d1a2e"
+    COR_MUTED = "#6b7fa3"
+    COR_MUTED2 = "#94a3b8"
+    COR_ACCENT = "#4a9eff"
+    COR_ACCENT_RGB = "74,158,255"
+    COR_TITULO = "#ffffff"
+    COR_INPUT_BG = "#111827"
+
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Inter:wght@300;400;500;600&display=swap');
 
-* { box-sizing: border-box; }
+* {{ box-sizing: border-box; }}
 
-html, body, [class*="css"] {
+html, body, [class*="css"] {{
     font-family: 'Inter', sans-serif;
-}
+}}
 
 /* ── FUNDO GERAL ── */
-.stApp {
-    background: #0a0e1a;
-    color: #e0e6f0;
-}
+.stApp {{
+    background: {COR_BG};
+    color: {COR_TEXTO};
+}}
 
 /* ── SIDEBAR ── */
-section[data-testid="stSidebar"] {
-    background: #0d1220 !important;
-    border-right: 1px solid #1e2d4a;
-}
-section[data-testid="stSidebar"] * { color: #c8d4e8 !important; }
-section[data-testid="stSidebar"] .stRadio label { 
+section[data-testid="stSidebar"] {{
+    background: {COR_SIDEBAR_BG} !important;
+    border-right: 1px solid {COR_BORDA};
+}}
+section[data-testid="stSidebar"] * {{ color: {COR_TEXTO} !important; }}
+section[data-testid="stSidebar"] .stRadio label {{ 
     font-size: 14px !important; 
     padding: 6px 0 !important;
-}
+}}
 
 /* ── TÍTULOS ── */
-.titulo-asb {
+.titulo-asb {{
     font-family: 'Rajdhani', sans-serif;
-    color: #ffffff;
+    color: {COR_TITULO};
     font-size: 42px;
     font-weight: 700;
     letter-spacing: 4px;
     text-align: center;
     padding: 20px 0 4px 0;
     text-transform: uppercase;
-}
-.subtitulo-asb {
-    color: #4a9eff;
+}}
+.subtitulo-asb {{
+    color: {COR_ACCENT};
     font-size: 13px;
     text-align: center;
     letter-spacing: 6px;
     text-transform: uppercase;
     margin-bottom: 32px;
-}
-.divider-blue {
+}}
+.divider-blue {{
     height: 2px;
-    background: linear-gradient(90deg, transparent, #4a9eff, transparent);
+    background: linear-gradient(90deg, transparent, {COR_ACCENT}, transparent);
     margin: 0 auto 32px auto;
     max-width: 400px;
-}
+}}
 
 /* ── CARDS GENÉRICOS ── */
-.asb-card {
-    background: #111827;
-    border: 1px solid #1e2d4a;
+.asb-card {{
+    background: {COR_CARD_BG};
+    border: 1px solid {COR_BORDA};
     border-radius: 12px;
     padding: 24px;
-}
+}}
 
 /* ── SEÇÃO: HOME ── */
-.home-card {
-    background: linear-gradient(135deg, #111827 0%, #0d1a2e 100%);
-    border: 1px solid #1e3a5f;
+.home-card {{
+    background: linear-gradient(135deg, {COR_CARD_BG} 0%, {COR_CARD_BG2} 100%);
+    border: 1px solid {COR_BORDA};
     border-radius: 14px;
     padding: 32px 24px;
     text-align: center;
     height: 100%;
     transition: border-color 0.3s ease;
-}
-.home-card:hover { border-color: #4a9eff; }
-.home-icon { font-size: 36px; margin-bottom: 14px; }
-.home-card h3 { 
+}}
+.home-card:hover {{ border-color: {COR_ACCENT}; }}
+.home-icon {{ font-size: 36px; margin-bottom: 14px; }}
+.home-card h3 {{ 
     font-family: 'Rajdhani', sans-serif;
-    color: #ffffff; font-size: 20px; font-weight: 600; 
+    color: {COR_TITULO}; font-size: 20px; font-weight: 600; 
     letter-spacing: 1px; margin-bottom: 10px;
-}
-.home-card p { color: #6b7fa3; font-size: 14px; line-height: 1.6; }
+}}
+.home-card p {{ color: {COR_MUTED}; font-size: 14px; line-height: 1.6; }}
 
 /* Barra animada */
-.barra-wrap { height: 6px; border-radius: 6px; overflow: hidden; margin-top: 12px; background: #1e2d4a; }
-.barra-on { height: 100%; background: linear-gradient(90deg, #22c55e, #86efac, #22c55e); background-size: 200%; animation: slide 1.5s linear infinite; }
-.barra-repouso { height: 100%; background: linear-gradient(90deg, #fbbf24, #fde68a, #fbbf24); background-size: 200%; animation: slide 2s linear infinite; }
-.barra-off { height: 100%; background: #ef4444; }
-.barra-inativa { height: 100%; background: #1e2d4a; }
-@keyframes slide { 0%{background-position:200% 0} 100%{background-position:0 0} }
+.barra-wrap {{ height: 6px; border-radius: 6px; overflow: hidden; margin-top: 12px; background: {COR_BORDA}; }}
+.barra-on {{ height: 100%; background: linear-gradient(90deg, #22c55e, #86efac, #22c55e); background-size: 200%; animation: slide 1.5s linear infinite; }}
+.barra-off {{ height: 100%; background: #ef4444; }}
+.barra-inativa {{ height: 100%; background: {COR_BORDA}; }}
+@keyframes slide {{ 0%{{background-position:200% 0}} 100%{{background-position:0 0}} }}
 
 /* ── SEÇÃO: MEDIÇÃO ── */
-.gauge-card {
-    background: #111827;
-    border: 1px solid #1e2d4a;
+.gauge-card {{
+    background: {COR_CARD_BG};
+    border: 1px solid {COR_BORDA};
     border-radius: 16px;
     padding: 32px 24px;
     text-align: center;
     position: relative;
-}
-.gauge-label {
+}}
+.gauge-label {{
     font-size: 12px;
     letter-spacing: 3px;
     text-transform: uppercase;
-    color: #4a9eff;
+    color: {COR_ACCENT};
     font-weight: 600;
     margin-bottom: 16px;
-}
-.gauge-value {
+}}
+.gauge-value {{
     font-family: 'Rajdhani', sans-serif;
     font-size: 72px;
     font-weight: 700;
     line-height: 1;
     margin-bottom: 6px;
-}
-.gauge-unit {
+}}
+.gauge-unit {{
     font-size: 20px;
-    color: #6b7fa3;
+    color: {COR_MUTED};
     margin-bottom: 20px;
-}
-.gauge-bar-bg { height: 8px; background: #1e2d4a; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }
-.gauge-bar-fill { height: 100%; border-radius: 8px; transition: width 0.8s ease; }
-.gauge-nivel-fill { background: linear-gradient(90deg, #ef4444, #fbbf24, #22c55e); }
-.gauge-volume-fill { background: linear-gradient(90deg, #06b6d4, #3b82f6); }
-.gauge-meta { font-size: 12px; color: #4b5563; }
-.dado-antigo { 
+}}
+.gauge-bar-bg {{ height: 8px; background: {COR_BORDA}; border-radius: 8px; overflow: hidden; margin-bottom: 16px; }}
+.gauge-bar-fill {{ height: 100%; border-radius: 8px; transition: width 0.8s ease; }}
+.gauge-nivel-fill {{ background: linear-gradient(90deg, #ef4444, #fbbf24, #22c55e); }}
+.gauge-volume-fill {{ background: linear-gradient(90deg, #06b6d4, #3b82f6); }}
+.gauge-meta {{ font-size: 12px; color: {COR_MUTED2}; }}
+.dado-antigo {{ 
     background: rgba(239,68,68,0.1); 
     border: 1px solid rgba(239,68,68,0.3); 
     border-radius: 6px; 
@@ -153,8 +190,8 @@ section[data-testid="stSidebar"] .stRadio label {
     color: #ef4444; 
     margin-top: 8px;
     letter-spacing: 1px;
-}
-.dado-fresco {
+}}
+.dado-fresco {{
     background: rgba(34,197,94,0.1);
     border: 1px solid rgba(34,197,94,0.3);
     border-radius: 6px;
@@ -163,10 +200,10 @@ section[data-testid="stSidebar"] .stRadio label {
     color: #22c55e;
     margin-top: 8px;
     letter-spacing: 1px;
-}
+}}
 
 /* ── SEÇÃO: DIAGNÓSTICO ── */
-.diag-status-ok {
+.diag-status-ok {{
     background: rgba(34,197,94,0.08);
     border: 1px solid #22c55e;
     border-radius: 12px;
@@ -178,8 +215,8 @@ section[data-testid="stSidebar"] .stRadio label {
     font-weight: 700;
     letter-spacing: 2px;
     margin-bottom: 24px;
-}
-.diag-status-off {
+}}
+.diag-status-off {{
     background: rgba(239,68,68,0.08);
     border: 1px solid #ef4444;
     border-radius: 12px;
@@ -191,23 +228,23 @@ section[data-testid="stSidebar"] .stRadio label {
     font-weight: 700;
     letter-spacing: 2px;
     margin-bottom: 24px;
-}
-.diag-info-row {
+}}
+.diag-info-row {{
     display: flex;
     align-items: center;
     gap: 12px;
-    background: #111827;
-    border: 1px solid #1e2d4a;
+    background: {COR_CARD_BG};
+    border: 1px solid {COR_BORDA};
     border-radius: 10px;
     padding: 16px 20px;
     margin-bottom: 12px;
     font-size: 14px;
-    color: #94a3b8;
-}
-.diag-info-label { font-weight: 600; color: #e2e8f0; min-width: 160px; }
+    color: {COR_MUTED2};
+}}
+.diag-info-label {{ font-weight: 600; color: {COR_TEXTO}; min-width: 200px; }}
 
 /* Streamlit button overrides por contexto */
-div[data-testid="stButton"] > button {
+div[data-testid="stButton"] > button {{
     width: 100%;
     font-family: 'Rajdhani', sans-serif !important;
     font-weight: 700 !important;
@@ -217,79 +254,79 @@ div[data-testid="stButton"] > button {
     border: none !important;
     padding: 14px 20px !important;
     transition: all 0.2s ease !important;
-}
+}}
 
 /* Botão padrão azul */
-div[data-testid="stButton"] > button:not([kind]) {
-    background: linear-gradient(135deg, #1e3a5f, #4a9eff) !important;
+div[data-testid="stButton"] > button:not([kind]) {{
+    background: linear-gradient(135deg, {COR_ACCENT}, {COR_ACCENT}) !important;
     color: white !important;
-}
+}}
 
 /* ── HEADER SEÇÃO ── */
-.section-header {
+.section-header {{
     font-family: 'Rajdhani', sans-serif;
     font-size: 28px;
     font-weight: 700;
     letter-spacing: 3px;
-    color: #ffffff;
+    color: {COR_TITULO};
     text-transform: uppercase;
     padding-bottom: 8px;
-    border-bottom: 1px solid #1e2d4a;
+    border-bottom: 1px solid {COR_BORDA};
     margin-bottom: 24px;
-}
+}}
 
 /* ── CHAT LOGS ── */
-.chat-container { 
-    background: #0d1220; 
-    border: 1px solid #1e2d4a;
+.chat-container {{ 
+    background: {COR_SIDEBAR_BG}; 
+    border: 1px solid {COR_BORDA};
     border-radius: 12px; 
     max-height: 420px; 
     overflow-y: auto; 
     padding: 16px;
-}
-.msg-balao { 
-    background: #111827; 
-    border-left: 3px solid #4a9eff; 
+}}
+.msg-balao {{ 
+    background: {COR_CARD_BG}; 
+    border-left: 3px solid {COR_ACCENT}; 
     border-radius: 8px; 
     padding: 10px 14px; 
     margin-bottom: 8px; 
     font-size: 13px; 
-    color: #c8d4e8;
-}
-.msg-balao b { color: #4a9eff; }
-.msg-balao small { color: #4b5563; }
+    color: {COR_TEXTO};
+}}
+.msg-balao b {{ color: {COR_ACCENT}; }}
+.msg-balao small {{ color: {COR_MUTED}; }}
 
 /* ── CARD USUÁRIO ── */
-.card-contato {
-    background: #111827;
-    border: 1px solid #1e2d4a;
+.card-contato {{
+    background: {COR_CARD_BG};
+    border: 1px solid {COR_BORDA};
     border-left: 4px solid #22c55e;
     border-radius: 10px;
     padding: 14px 18px;
     margin-bottom: 10px;
-    color: #c8d4e8;
+    color: {COR_TEXTO};
     font-size: 14px;
-}
+}}
 
 /* ── MODO AUTO ── */
-.auto-info {
-    background: rgba(74,158,255,0.07);
-    border: 1px solid rgba(74,158,255,0.25);
+.auto-info {{
+    background: rgba({COR_ACCENT_RGB},0.07);
+    border: 1px solid rgba({COR_ACCENT_RGB},0.25);
     border-radius: 12px;
     padding: 20px;
-    color: #93c5fd;
+    color: {COR_TEXTO};
     font-size: 15px;
     margin-bottom: 16px;
-}
+}}
 
 /* Inputs */
-.stTextInput input, .stNumberInput input {
-    background: #111827 !important;
-    border: 1px solid #1e2d4a !important;
+.stTextInput input, .stNumberInput input {{
+    background: {COR_INPUT_BG} !important;
+    border: 1px solid {COR_BORDA} !important;
     border-radius: 8px !important;
-    color: #e2e8f0 !important;
-}
-.stRadio label { color: #c8d4e8 !important; }
+    color: {COR_TEXTO} !important;
+}}
+.stRadio label {{ color: {COR_TEXTO} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -325,9 +362,6 @@ def conectar_firebase():
             firebase_admin.initialize_app(cred, {'databaseURL': 'https://lavanderia-exata-default-rtdb.firebaseio.com/'})
             return True
         except Exception as e:
-            # ALTERAÇÃO: erro real exposto na tela em vez de escondido.
-            # Isso é temporário para diagnóstico - depois de resolver, pode
-            # deixar assim mesmo, não atrapalha o uso normal.
             st.error(f"ERRO AO CONECTAR NO FIREBASE: {e}")
             return False
     return True
@@ -341,10 +375,7 @@ def registrar_evento(acao):
     except: pass
 
 def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
-    """Retorna True se o dado foi atualizado recentemente.
-    ALTERAÇÃO: restaurada a verificação real (estava fixada em 'return True'
-    como paliativo). Agora que o erro de conexão está visível e será
-    corrigido, a verificação de frescor volta a refletir a comunicação real."""
+    """Retorna True se o dado foi atualizado recentemente."""
     if not ultimo_pulso_ms:
         return False
     try:
@@ -358,7 +389,7 @@ def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
 # --- 4. ESTADOS ---
 defaults = {
     "logado": False, "is_admin": False, "email_ativo": True,
-    "modo_operacao": "MANUAL", "ciclo_ativo": False
+    "modo_operacao": "MANUAL", "ciclo_ativo": False, "tema_claro": False
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -402,9 +433,9 @@ else:
         st.markdown(f"""
         <div style='text-align:center; padding: 16px 0 8px 0;'>
             <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; 
-                        color:#4a9eff; letter-spacing:2px;'>LAVANDERIA EXATA</div>
-            <div style='font-size:11px; color:#4b5563; letter-spacing:1px;'>SUPERVISÓRIO DE RESERVATÓRIO</div>
-            <div style='margin-top:10px; font-size:13px; color:#94a3b8;'>
+                        color:{COR_ACCENT}; letter-spacing:2px;'>LAVANDERIA EXATA</div>
+            <div style='font-size:11px; color:{COR_MUTED}; letter-spacing:1px;'>SUPERVISÓRIO DE RESERVATÓRIO</div>
+            <div style='margin-top:10px; font-size:13px; color:{COR_MUTED2};'>
                 👤 {st.session_state.get("user_nome","")}</div>
         </div>
         """, unsafe_allow_html=True)
@@ -415,12 +446,13 @@ else:
         menu = st.radio("Navegação", opts, label_visibility="collapsed")
 
         st.divider()
+        st.session_state["tema_claro"] = st.toggle("🌓 Tema Claro", value=st.session_state["tema_claro"])
         st.session_state["email_ativo"] = st.toggle("📧 Notificações por Email", value=st.session_state["email_ativo"])
 
         num_wa = st.text_input("WhatsApp Suporte (com DDD)", placeholder="5511999999999")
         if num_wa:
             txt = urllib.parse.quote(f"Olá, sou {st.session_state['user_nome']}. Reportando ocorrência no reservatório da Lavanderia Exata.")
-            st.markdown(f'<a href="https://wa.me/{num_wa}?text={txt}" target="_blank" style="color:#4a9eff; font-size:13px;">💬 Abrir Suporte WhatsApp</a>', unsafe_allow_html=True)
+            st.markdown(f'<a href="https://wa.me/{num_wa}?text={txt}" target="_blank" style="color:{COR_ACCENT}; font-size:13px;">💬 Abrir Suporte WhatsApp</a>', unsafe_allow_html=True)
 
         st.divider()
         if st.button("⏻ Encerrar Sessão"):
@@ -456,14 +488,26 @@ else:
         st.session_state["modo_operacao"] = modo
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # STATUS EXIBIDO: vem do que o ESP32 realmente aplicou
+        # (reservatorio/bomba_status), NÃO do último botão clicado no painel.
+        # Ainda não vem do contator físico da bomba (pendente a instalação
+        # final / mapeamento de pinos) - ver nota no .ino.
         try:
-            status_real = db.reference("controle/bomba").get() or "OFF"
+            status_real = db.reference("reservatorio/bomba_status").get() or "OFF"
         except:
             status_real = "DESCONHECIDO"
 
+        # Estado do automático por software (backup da bóia elétrica)
+        try:
+            auto_software_ativo = db.reference("controle/auto_software_ativo").get()
+            if auto_software_ativo is None:
+                auto_software_ativo = False
+        except:
+            auto_software_ativo = False
+
         if modo == "MANUAL":
-            cor_map = {"ON": "#22c55e", "REPOUSO": "#fbbf24", "OFF": "#ef4444"}
-            label_map = {"ON": "● BOMBA LIGADA", "REPOUSO": "◐ REPOUSO", "OFF": "○ BOMBA DESLIGADA"}
+            cor_map = {"ON": "#22c55e", "OFF": "#ef4444"}
+            label_map = {"ON": "● BOMBA LIGADA", "OFF": "○ BOMBA DESLIGADA"}
             cor = cor_map.get(status_real, "#64748b")
             label = label_map.get(status_real, f"? {status_real}")
 
@@ -477,7 +521,15 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-            col1, col2, col3 = st.columns(3, gap="large")
+            if auto_software_ativo:
+                st.markdown("""
+                <div class='auto-info'>⚠️ O automático por software está <b>ATIVO</b> (aba
+                Automático). O ESP32 decide sozinho com base no nível e pode sobrescrever o
+                comando manual abaixo. Desative o automático por software se quiser controle
+                100% manual.</div>
+                """, unsafe_allow_html=True)
+
+            col1, col2 = st.columns(2, gap="large")
 
             with col1:
                 ativo = status_real == "ON"
@@ -494,30 +546,11 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 if st.button("▶ LIGAR", key="btn_ligar", use_container_width=True):
-                    db.reference("controle/bomba").set("ON")
-                    registrar_evento("LIGOU A BOMBA")
+                    db.reference("controle/bomba_comando").set("ON")
+                    registrar_evento("LIGOU A BOMBA (manual)")
                     st.rerun()
 
             with col2:
-                ativo = status_real == "REPOUSO"
-                st.markdown(f"""
-                <div style='background:{"rgba(251,191,36,0.15)" if ativo else "rgba(251,191,36,0.05)"};
-                    border:{"2px solid #fbbf24" if ativo else "1px solid #fbbf2440"};
-                    border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
-                    <div style='font-size:32px; margin-bottom:8px;'>🌙</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700;
-                        letter-spacing:2px; color:#fbbf24;'>REPOUSO</div>
-                    <div class='barra-wrap' style='margin-top:14px;'>
-                        <div class='{"barra-repouso" if ativo else "barra-inativa"}'></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("⏸ REPOUSO", key="btn_repouso", use_container_width=True):
-                    db.reference("controle/bomba").set("REPOUSO")
-                    registrar_evento("COLOCOU BOMBA EM REPOUSO")
-                    st.rerun()
-
-            with col3:
                 ativo = status_real == "OFF"
                 st.markdown(f"""
                 <div style='background:{"rgba(239,68,68,0.15)" if ativo else "rgba(239,68,68,0.05)"};
@@ -532,23 +565,39 @@ else:
                 </div>
                 """, unsafe_allow_html=True)
                 if st.button("⏹ DESLIGAR", key="btn_desligar", use_container_width=True):
-                    db.reference("controle/bomba").set("OFF")
-                    registrar_evento("DESLIGOU A BOMBA")
+                    db.reference("controle/bomba_comando").set("OFF")
+                    registrar_evento("DESLIGOU A BOMBA (manual)")
                     st.rerun()
 
         else:
             st.markdown("""
-            <div class='auto-info'>🤖 <b>MODO AUTOMÁTICO ATIVO</b> — a bomba liga/desliga sozinha
-            conforme o nível do reservatório (esta lógica roda no próprio ESP32).</div>
+            <div class='auto-info'>🌊 <b>AUTOMÁTICO POR HARDWARE (BÓIA)</b> — hoje quem liga e
+            desliga a bomba sozinha é a bóia elétrica instalada no quadro das bombas. O controle
+            abaixo é um <b>backup por software</b>, para os casos em que a bóia apresentar algum
+            problema.</div>
             """, unsafe_allow_html=True)
-            st.markdown(f"""
-            <div class='diag-info-row'>
-                <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span>{NIVEL_BAIXO_PCT}% do reservatório</span>
-            </div>
-            <div class='diag-info-row'>
-                <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span>{NIVEL_CHEIO_PCT}% do reservatório</span>
-            </div>
-            """, unsafe_allow_html=True)
+
+            novo_auto = st.toggle(
+                "🤖 Ativar automático por SOFTWARE (backup da bóia)",
+                value=bool(auto_software_ativo),
+                key="toggle_auto_software"
+            )
+            if novo_auto != auto_software_ativo:
+                db.reference("controle/auto_software_ativo").set(novo_auto)
+                registrar_evento("ATIVOU o automático por software" if novo_auto else "DESATIVOU o automático por software")
+                st.rerun()
+
+            if novo_auto:
+                st.markdown(f"""
+                <div class='diag-info-row'>
+                    <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span>{BOMBA_LIGA_PCT}% do reservatório</span>
+                </div>
+                <div class='diag-info-row'>
+                    <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span>{BOMBA_DESLIGA_PCT}% do reservatório</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Automático por software desligado — a bóia elétrica está no comando.</div>", unsafe_allow_html=True)
 
     # ─── NÍVEL DO RESERVATÓRIO ──────────────────────────────────────────────
     elif menu == "💧 Nível do Reservatório":
@@ -557,27 +606,22 @@ else:
         altura_m, volume_l, percentual, falha_sensor, ultimo_pulso = None, None, None, False, None
 
         try:
-            # 1. Tenta buscar no caminho padrão 'reservatorio'
             res = db.reference("reservatorio").get()
-            
-            # Se res for um dicionário de dicionários (ex: push id do Firebase), pega o último item
+
             if isinstance(res, dict) and res and not any(k in res for k in ["nivel_metros", "percentual", "volume_litros"]):
                 chaves = list(res.keys())
                 res = res[chaves[-1]] if isinstance(res[chaves[-1]], dict) else res
 
-            # Se ainda for None, busca no nó 'sensor' como fallback do padrão v83.0
             if not res:
                 res = db.reference("sensor").get() or {}
 
             if isinstance(res, dict):
-                # Leitura flexível das chaves
                 altura_m = res.get("nivel_metros") or res.get("nivel") or res.get("altura")
                 volume_l = res.get("volume_litros") or res.get("volume")
                 percentual = res.get("percentual") or res.get("pct") or res.get("nivel_pct")
                 falha_sensor = res.get("falha_sensor", False)
                 ultimo_pulso = res.get("ultimo_pulso") or res.get("timestamp")
 
-                # Cálculo automático do volume/percentual se apenas a altura estiver disponível
                 if altura_m is not None:
                     altura_m = float(altura_m)
                     if percentual is None:
@@ -588,9 +632,6 @@ else:
         except Exception as e:
             st.error(f"Erro na leitura dos dados: {e}")
 
-        # ALTERAÇÃO: "dado disponível" (existe valor) agora é separado de
-        # "dado fresco" (chegou recentemente). São coisas diferentes:
-        # pode existir um valor antigo no banco mesmo sem comunicação atual.
         dado_disponivel = (percentual is not None or altura_m is not None)
         dado_fresco = checar_dado_fresco(ultimo_pulso, tolerancia_segundos=60)
 
@@ -626,7 +667,7 @@ else:
             st.markdown(f"""
             <div class='gauge-card'>
                 <div class='gauge-label'>Nível do Reservatório</div>
-                <div class='gauge-value' style='color:#4a9eff;'>{valor_pct}</div>
+                <div class='gauge-value' style='color:{COR_ACCENT};'>{valor_pct}</div>
                 <div class='gauge-unit'>%</div>
                 <div class='gauge-bar-bg'>
                     <div class='gauge-bar-fill gauge-nivel-fill' style='width:{pct_barra_nivel}%;'></div>
@@ -666,9 +707,9 @@ else:
                     tempo_str = f"há {segundos_atras//60}min"
                 else:
                     tempo_str = f"há {segundos_atras//3600}h"
-                st.markdown(f"<div style='text-align:center; color:#4b5563; font-size:12px; letter-spacing:1px;'>Último sinal do dispositivo: <b style='color:#94a3b8;'>{tempo_str}</b></div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center; color:{COR_MUTED}; font-size:12px; letter-spacing:1px;'>Último sinal do dispositivo: <b style='color:{COR_MUTED2};'>{tempo_str}</b></div>", unsafe_allow_html=True)
             except:
-                st.markdown("<div style='text-align:center; color:#4b5563; font-size:12px;'>Não foi possível calcular o tempo do último sinal.</div>", unsafe_allow_html=True)
+                st.markdown(f"<div style='text-align:center; color:{COR_MUTED}; font-size:12px;'>Não foi possível calcular o tempo do último sinal.</div>", unsafe_allow_html=True)
         else:
             st.markdown("<div style='text-align:center; color:#ef4444; font-size:12px;'>Nenhum sinal recebido do dispositivo.</div>", unsafe_allow_html=True)
 
@@ -716,7 +757,7 @@ else:
                 </div>""", unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
         else:
-            st.markdown("<div style='text-align:center; color:#4b5563; padding:40px;'>Nenhum registro encontrado.</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align:center; color:{COR_MUTED}; padding:40px;'>Nenhum registro encontrado.</div>", unsafe_allow_html=True)
 
     # ─── DIAGNÓSTICO ────────────────────────────────────────────────────────
     elif menu == "🛠️ Diagnóstico":
@@ -729,7 +770,7 @@ else:
                 res_diag = res_diag[chaves[-1]] if isinstance(res_diag[chaves[-1]], dict) else res_diag
 
             ultimo_p = res_diag.get("ultimo_pulso") if isinstance(res_diag, dict) else None
-            status_bomba = db.reference("controle/bomba").get() or "—"
+            status_bomba = res_diag.get("bomba_status", "—") if isinstance(res_diag, dict) else "—"
         except Exception as e:
             st.error(f"Erro na leitura de diagnóstico: {e}")
             ultimo_p = None
@@ -737,13 +778,11 @@ else:
 
         online = checar_dado_fresco(ultimo_p, tolerancia_segundos=45)
 
-        # Status principal
         if online:
             st.markdown("<div class='diag-status-ok'>✅ SISTEMA ONLINE — Comunicação Ativa</div>", unsafe_allow_html=True)
         else:
             st.markdown("<div class='diag-status-off'>⚠️ SISTEMA OFFLINE — Sem Comunicação</div>", unsafe_allow_html=True)
 
-        # Informações de diagnóstico
         agora_ms = time.time() * 1000
         if ultimo_p:
             try:
@@ -773,19 +812,35 @@ else:
         """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:#94a3b8; letter-spacing:2px; margin-bottom:14px;'>AÇÕES DE MANUTENÇÃO</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:{COR_MUTED2}; letter-spacing:2px; margin-bottom:14px;'>AÇÕES DE MANUTENÇÃO</div>", unsafe_allow_html=True)
 
         d1, d2 = st.columns(2, gap="medium")
         with d1:
-            if st.button("🔁 REBOOT ESP32", use_container_width=True):
+            # Liberado para QUALQUER usuário logado (inclusive o cliente).
+            # Só reinicia o ESP32 / força reconectar na rede JÁ SALVA -
+            # não muda nem apaga rede nenhuma.
+            if st.button("🔁 REINICIAR / RECONECTAR", use_container_width=True):
                 try: db.reference("controle/restart").set(True)
                 except: pass
-                st.success("Comando de reboot enviado.")
+                registrar_evento("Solicitou reinício/reconexão do dispositivo")
+                st.success("Comando enviado. O dispositivo deve reiniciar e reconectar em instantes.")
+
         with d2:
-            if st.button("📡 RECONFIGURAR WI-FI", use_container_width=True):
-                try: db.reference("controle/restart").set(True)
-                except: pass
-                st.success("Comando de reconfiguração enviado.")
+            if st.session_state["is_admin"]:
+                st.markdown("<div style='font-size:11px; color:#ef4444; margin-bottom:6px; text-align:center; letter-spacing:1px;'>⚠️ SÓ ADMIN MASTER</div>", unsafe_allow_html=True)
+                if st.button("📡 RECONFIGURAR WI-FI", use_container_width=True):
+                    try: db.reference("controle/wifi_reset").set(True)
+                    except: pass
+                    registrar_evento("Solicitou reconfiguração de WiFi (reset)")
+                    st.success("Comando enviado. O dispositivo vai apagar o WiFi salvo e abrir o portal de configuração (rede ASB_WIFI).")
+            else:
+                st.markdown(f"""
+                <div style='background:rgba(100,116,139,0.08); border:1px solid rgba(100,116,139,0.3);
+                    border-radius:10px; padding:16px; text-align:center; color:{COR_MUTED}; font-size:13px; height:100%;'>
+                    🔒 Reconfiguração de WiFi disponível apenas para o Administrador Master.
+                    Fale com a ASB Automação Industrial se precisar trocar de rede.
+                </div>
+                """, unsafe_allow_html=True)
 
     # ─── GESTÃO DE USUÁRIOS ─────────────────────────────────────────────────
     elif menu == "👥 Gestão de Usuários" and st.session_state["is_admin"]:
@@ -810,7 +865,7 @@ else:
                 st.rerun()
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:#94a3b8; letter-spacing:2px; margin-bottom:14px;'>OPERADORES CADASTRADOS</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:600; color:{COR_MUTED2}; letter-spacing:2px; margin-bottom:14px;'>OPERADORES CADASTRADOS</div>", unsafe_allow_html=True)
 
         try:
             usrs = db.reference("usuarios_autorizados").get()
@@ -819,15 +874,27 @@ else:
 
         if usrs:
             for k_u, v_u in usrs.items():
-                st.markdown(f"""
-                <div class='card-contato'>
-                    🟢 <b style='color:#e2e8f0;'>{v_u['nome']}</b><br>
-                    <span style='color:#94a3b8;'>Usuário:</span> {v_u['login']} &nbsp;|&nbsp;
-                    <span style='color:#94a3b8;'>Senha:</span> {v_u['senha']}<br>
-                    <small style='color:#4b5563;'>Cadastrado em: {v_u.get('data','—')}</small>
-                </div>
-                """, unsafe_allow_html=True)
+                col_info, col_del = st.columns([6, 1])
+                with col_info:
+                    st.markdown(f"""
+                    <div class='card-contato'>
+                        🟢 <b style='color:{COR_TITULO};'>{v_u['nome']}</b><br>
+                        <span>Usuário:</span> {v_u['login']} &nbsp;|&nbsp;
+                        <span>Senha:</span> {v_u['senha']}<br>
+                        <small>Cadastrado em: {v_u.get('data','—')}</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                with col_del:
+                    if st.button("🗑️", key=f"del_{k_u}", use_container_width=True, help=f"Apagar {v_u['nome']}"):
+                        try:
+                            db.reference(f"usuarios_autorizados/{k_u}").delete()
+                            registrar_evento(f"APAGOU o operador '{v_u['nome']}'")
+                            st.success(f"Operador '{v_u['nome']}' removido.")
+                        except:
+                            st.error("Erro ao remover operador.")
+                        st.rerun()
         else:
-            st.markdown("<div style='color:#4b5563; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v1.7 (erro de conexão exposto + frescor real restaurado)
+# LAVANDERIA EXATA - v1.8 (tema claro/escuro, bomba comando/status separados,
+# automático por software, permissões de WiFi, exclusão de usuário)
