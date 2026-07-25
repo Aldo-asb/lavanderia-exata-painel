@@ -8,10 +8,11 @@ import firebase_admin
 from firebase_admin import credentials, db
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import pytz
 import urllib.parse
+import pandas as pd
 
 # --- 1. CONFIGURAÇÃO DO RESERVATÓRIO ---
 CAPACIDADE_LITROS = 30000.0   # capacidade total do reservatorio
@@ -728,7 +729,174 @@ else:
 
     # ─── RELATÓRIOS ─────────────────────────────────────────────────────────
     elif menu == "📊 Relatórios":
-        st.markdown("<div class='section-header'>Histórico de Atividades</div>", unsafe_allow_html=True)
+        st.markdown("<div class='section-header'>Relatórios</div>", unsafe_allow_html=True)
+
+        # Funcoes auxiliares locais - carregam e cruzam os pontos automaticos
+        # que o ESP32 grava a cada 30 min em "historico_sensores" e os
+        # eventos de LIGOU/DESLIGOU em "historico_bomba".
+        def _ts_para_datahora(ts):
+            try:
+                return datetime.fromtimestamp(float(ts) / 1000, pytz.timezone('America/Sao_Paulo'))
+            except (TypeError, ValueError):
+                return None
+
+        def carregar_pontos_nivel(data_alvo, cache_pontos):
+            linhas = []
+            for v in cache_pontos.values():
+                dt = _ts_para_datahora(v.get("data"))
+                if dt is not None and dt.date() == data_alvo:
+                    linhas.append({
+                        "horario": dt,
+                        "percentual": v.get("percentual"),
+                        "volume_litros": v.get("volume_litros"),
+                        "bomba_status": v.get("bomba_status", "—"),
+                    })
+            linhas.sort(key=lambda x: x["horario"])
+            return linhas
+
+        def calcular_consumo_litros(linhas):
+            # Soma só as QUEDAS de volume entre pontos consecutivos (consumo
+            # real). Subidas (reabastecimento pela bomba) são ignoradas de
+            # propósito - não é "consumo", é a bomba enchendo de volta.
+            consumo = 0.0
+            for i in range(1, len(linhas)):
+                v_ant = linhas[i - 1]["volume_litros"]
+                v_atu = linhas[i]["volume_litros"]
+                if v_ant is not None and v_atu is not None and v_ant > v_atu:
+                    consumo += (v_ant - v_atu)
+            return consumo
+
+        def carregar_eventos_bomba(data_alvo, cache_eventos):
+            eventos = []
+            for v in cache_eventos.values():
+                dt = _ts_para_datahora(v.get("data"))
+                if dt is not None and dt.date() == data_alvo:
+                    eventos.append({"horario": dt, "evento": v.get("evento")})
+            eventos.sort(key=lambda x: x["horario"])
+            return eventos
+
+        def calcular_acionamentos(eventos, data_alvo):
+            num_ligou = sum(1 for e in eventos if e["evento"] == "LIGOU")
+            tempo_ligada_seg = 0.0
+            inicio_on = None
+            for e in eventos:
+                if e["evento"] == "LIGOU":
+                    inicio_on = e["horario"]
+                elif e["evento"] == "DESLIGOU" and inicio_on is not None:
+                    tempo_ligada_seg += (e["horario"] - inicio_on).total_seconds()
+                    inicio_on = None
+            if inicio_on is not None:
+                # Ainda estava ligada no fim do periodo consultado - conta ate
+                # agora (se for hoje) ou ate o fim do dia (se for dia passado).
+                agora_local = datetime.now(pytz.timezone('America/Sao_Paulo'))
+                if data_alvo == agora_local.date():
+                    fim_ref = agora_local
+                else:
+                    fim_ref = pytz.timezone('America/Sao_Paulo').localize(
+                        datetime.combine(data_alvo, datetime.max.time())
+                    )
+                tempo_ligada_seg += (fim_ref - inicio_on).total_seconds()
+            return num_ligou, tempo_ligada_seg / 3600.0
+
+        # --- Carrega os nos do Firebase uma unica vez (evita varias chamadas) ---
+        try:
+            cache_pontos_nivel = db.reference("historico_sensores").get() or {}
+        except Exception:
+            cache_pontos_nivel = {}
+        try:
+            cache_eventos_bomba = db.reference("historico_bomba").get() or {}
+        except Exception:
+            cache_eventos_bomba = {}
+
+        # ── SUB-SEÇÃO: CONSUMO DE ÁGUA ──────────────────────────────────────
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>💧 CONSUMO DE ÁGUA</div>", unsafe_allow_html=True)
+
+        data_selecionada = st.date_input("Selecione o dia", value=obter_hora_brasilia().date())
+
+        linhas_dia = carregar_pontos_nivel(data_selecionada, cache_pontos_nivel)
+
+        if not linhas_dia:
+            st.markdown(f"""
+            <div style='color:{COR_MUTED}; padding:20px; text-align:center; border:1px dashed {COR_BORDA}; border-radius:10px;'>
+                Nenhum registro automático de nível para este dia ainda.
+                O ESP32 grava um ponto a cada 30 minutos — se o dispositivo
+                acabou de entrar em operação, aguarde o primeiro ciclo.
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            consumo_litros = calcular_consumo_litros(linhas_dia)
+            eventos_dia = carregar_eventos_bomba(data_selecionada, cache_eventos_bomba)
+            num_acionamentos, horas_ligada = calcular_acionamentos(eventos_dia, data_selecionada)
+
+            m1, m2, m3 = st.columns(3, gap="medium")
+            with m1:
+                st.markdown(f"""
+                <div class='gauge-card'>
+                    <div class='gauge-label'>Consumo Estimado</div>
+                    <div class='gauge-value' style='color:#06b6d4; font-size:48px;'>{consumo_litros:,.0f}</div>
+                    <div class='gauge-unit'>litros no dia</div>
+                </div>
+                """.replace(",", "."), unsafe_allow_html=True)
+            with m2:
+                st.markdown(f"""
+                <div class='gauge-card'>
+                    <div class='gauge-label'>Acionamentos da Bomba</div>
+                    <div class='gauge-value' style='color:{COR_ACCENT}; font-size:48px;'>{num_acionamentos}</div>
+                    <div class='gauge-unit'>vezes ligou no dia</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"""
+                <div class='gauge-card'>
+                    <div class='gauge-label'>Tempo Ligada</div>
+                    <div class='gauge-value' style='color:#22c55e; font-size:48px;'>{horas_ligada:.1f}</div>
+                    <div class='gauge-unit'>horas no dia</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:{COR_MUTED2}; font-size:13px; margin-bottom:8px;'>Nível do reservatório (%) ao longo do dia — subidas = bomba enchendo, descidas = consumo</div>", unsafe_allow_html=True)
+
+            df_dia = pd.DataFrame(linhas_dia).set_index("horario")
+            st.line_chart(df_dia["percentual"])
+
+            csv_bytes = pd.DataFrame(linhas_dia).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "⬇️ Exportar CSV do dia",
+                data=csv_bytes,
+                file_name=f"consumo_lavanderia_exata_{data_selecionada.isoformat()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # ── SUB-SEÇÃO: COMPARATIVO ÚLTIMOS 7 DIAS ──────────────────────────
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>📅 COMPARATIVO — ÚLTIMOS 7 DIAS</div>", unsafe_allow_html=True)
+
+        hoje = obter_hora_brasilia().date()
+        dias_semana = [hoje - timedelta(days=i) for i in range(6, -1, -1)]
+        consumo_por_dia = {}
+        for d in dias_semana:
+            linhas_d = carregar_pontos_nivel(d, cache_pontos_nivel)
+            consumo_por_dia[d] = calcular_consumo_litros(linhas_d)
+
+        if any(consumo_por_dia.values()):
+            df_semana = pd.DataFrame({
+                "dia": [d.strftime("%d/%m") for d in dias_semana],
+                "litros consumidos": [consumo_por_dia[d] for d in dias_semana],
+            }).set_index("dia")
+            st.bar_chart(df_semana)
+
+            media_semana = sum(consumo_por_dia.values()) / len(consumo_por_dia)
+            st.markdown(f"<div style='text-align:center; color:{COR_MUTED}; font-size:13px;'>Média diária na semana: <b style='color:{COR_TITULO};'>{media_semana:,.0f} L</b></div>".replace(",", "."), unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='color:{COR_MUTED}; padding:20px; text-align:center;'>Ainda não há histórico suficiente para o comparativo semanal.</div>", unsafe_allow_html=True)
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+
+        # ── SUB-SEÇÃO: HISTÓRICO DE AÇÕES (log existente) ─────────────────
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>📝 HISTÓRICO DE AÇÕES</div>", unsafe_allow_html=True)
 
         if st.session_state["is_admin"]:
             col_lixo = st.columns([1, 2, 1])
@@ -737,6 +905,7 @@ else:
                     try:
                         db.reference("historico_acoes").delete()
                         db.reference("historico_sensores").delete()
+                        db.reference("historico_bomba").delete()
                     except: pass
                     st.rerun()
             st.markdown("<br>", unsafe_allow_html=True)
