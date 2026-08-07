@@ -565,79 +565,105 @@ else:
 
             # SEÇÃO MANUAL DO SUPERVISÓRIO WEB
             if sub_modo_web == "MANUAL":
-                # Se o automático por software estiver ativo no Firebase, desativa
                 if auto_software_ativo:
                     db.reference("controle/auto_software_ativo").set(False)
 
-                st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:20px 0 12px 0;'>💧 BOMBA PRINCIPAL (B1)</div>", unsafe_allow_html=True)
-                col_b1_on, col_b1_off = st.columns(2, gap="large")
+                # SEPARAÇÃO DAS BOMBAS EM ABAS DEDICADAS PARA VISUALIZAÇÃO LIMPA E SEM CONFUSÃO
+                tab_b1_web, tab_b2_web = st.tabs(["💧 BOMBA PRINCIPAL (B1)", "🔄 BOMBA RESERVA (B2)"])
 
-                with col_b1_on:
-                    ativo_b1 = b1_ligada
+                with tab_b1_web:
+                    st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:12px 0 16px 0;'>💧 COMANDO - BOMBA PRINCIPAL (B1)</div>", unsafe_allow_html=True)
+                    
+                    # Indicador de estado atual B1
+                    cor_b1 = "#22c55e" if b1_ligada else "#ef4444"
+                    label_b1 = "● BOMBA PRINCIPAL LIGADA" if b1_ligada else "○ BOMBA PRINCIPAL DESLIGADA"
+                    bg_b1 = "rgba(34,197,94,0.15)" if b1_ligada else "rgba(239,68,68,0.12)"
                     st.markdown(f"""
-                    <div style='background:{"rgba(34,197,94,0.2)" if ativo_b1 else "rgba(34,197,94,0.05)"};
-                        border:{"2px solid #22c55e" if ativo_b1 else "1px solid #22c55e40"};
-                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
-                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b1 else COR_MUTED};'>
-                            LIGA BOMBA PRINCIPAL
-                        </div>
+                    <div style='text-align:center; padding:12px; border-radius:10px; border:1px solid {cor_b1}; background:{bg_b1}; margin-bottom:20px;'>
+                        <span style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{cor_b1};'>{label_b1}</span>
                     </div>
                     """, unsafe_allow_html=True)
-                    if st.button("▶ LIGA BOMBA PRINCIPAL", key="btn_liga_b1", use_container_width=True):
-                        db.reference("controle/bomba1_comando").set("ON")
-                        registrar_evento("LIGOU A BOMBA PRINCIPAL (manual web)")
-                        st.rerun()
 
-                with col_b1_off:
-                    inativo_b1 = not b1_ligada
-                    st.markdown(f"""
-                    <div style='background:{"rgba(239,68,68,0.2)" if inativo_b1 else "rgba(239,68,68,0.05)"};
-                        border:{"2px solid #ef4444" if inativo_b1 else "1px solid #ef444440"};
-                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
-                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b1 else COR_MUTED};'>
-                            DESLIGA BOMBA PRINCIPAL
+                    col_b1_on, col_b1_off = st.columns(2, gap="large")
+
+                    with col_b1_on:
+                        ativo_b1 = b1_ligada
+                        st.markdown(f"""
+                        <div style='background:{"rgba(34,197,94,0.2)" if ativo_b1 else "rgba(34,197,94,0.05)"};
+                            border:{"2px solid #22c55e" if ativo_b1 else "1px solid #22c55e40"};
+                            border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                            <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b1 else COR_MUTED};'>
+                                LIGA BOMBA PRINCIPAL
+                            </div>
                         </div>
+                        """, unsafe_allow_html=True)
+                        if st.button("▶ LIGA BOMBA PRINCIPAL", key="btn_liga_b1", use_container_width=True):
+                            db.reference("controle/bomba1_comando").set("ON")
+                            registrar_evento("LIGOU A BOMBA PRINCIPAL (manual web)")
+                            st.rerun()
+
+                    with col_b1_off:
+                        inativo_b1 = not b1_ligada
+                        st.markdown(f"""
+                        <div style='background:{"rgba(239,68,68,0.2)" if inativo_b1 else "rgba(239,68,68,0.05)"};
+                            border:{"2px solid #ef4444" if inativo_b1 else "1px solid #ef444440"};
+                            border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                            <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b1 else COR_MUTED};'>
+                                DESLIGA BOMBA PRINCIPAL
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        if st.button("⏹ DESLIGA BOMBA PRINCIPAL", key="btn_desliga_b1", use_container_width=True):
+                            db.reference("controle/bomba1_comando").set("OFF")
+                            registrar_evento("DESLIGOU A BOMBA PRINCIPAL (manual web)")
+                            st.rerun()
+
+                with tab_b2_web:
+                    st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:12px 0 16px 0;'>🔄 COMANDO - BOMBA RESERVA (B2)</div>", unsafe_allow_html=True)
+
+                    # Indicador de estado atual B2
+                    cor_b2 = "#22c55e" if b2_ligada else "#ef4444"
+                    label_b2 = "● BOMBA RESERVA LIGADA" if b2_ligada else "○ BOMBA RESERVA DESLIGADA"
+                    bg_b2 = "rgba(34,197,94,0.15)" if b2_ligada else "rgba(239,68,68,0.12)"
+                    st.markdown(f"""
+                    <div style='text-align:center; padding:12px; border-radius:10px; border:1px solid {cor_b2}; background:{bg_b2}; margin-bottom:20px;'>
+                        <span style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{cor_b2};'>{label_b2}</span>
                     </div>
                     """, unsafe_allow_html=True)
-                    if st.button("⏹ DESLIGA BOMBA PRINCIPAL", key="btn_desliga_b1", use_container_width=True):
-                        db.reference("controle/bomba1_comando").set("OFF")
-                        registrar_evento("DESLIGOU A BOMBA PRINCIPAL (manual web)")
-                        st.rerun()
 
-                st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:24px 0 12px 0;'>🔄 BOMBA RESERVA (B2)</div>", unsafe_allow_html=True)
-                col_b2_on, col_b2_off = st.columns(2, gap="large")
+                    col_b2_on, col_b2_off = st.columns(2, gap="large")
 
-                with col_b2_on:
-                    ativo_b2 = b2_ligada
-                    st.markdown(f"""
-                    <div style='background:{"rgba(34,197,94,0.2)" if ativo_b2 else "rgba(34,197,94,0.05)"};
-                        border:{"2px solid #22c55e" if ativo_b2 else "1px solid #22c55e40"};
-                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
-                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b2 else COR_MUTED};'>
-                            LIGA BOMBA RESERVA
+                    with col_b2_on:
+                        ativo_b2 = b2_ligada
+                        st.markdown(f"""
+                        <div style='background:{"rgba(34,197,94,0.2)" if ativo_b2 else "rgba(34,197,94,0.05)"};
+                            border:{"2px solid #22c55e" if ativo_b2 else "1px solid #22c55e40"};
+                            border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                            <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b2 else COR_MUTED};'>
+                                LIGA BOMBA RESERVA
+                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if st.button("▶ LIGA BOMBA RESERVA", key="btn_liga_b2", use_container_width=True):
-                        db.reference("controle/bomba2_comando").set("ON")
-                        registrar_evento("LIGOU A BOMBA RESERVA (manual web)")
-                        st.rerun()
+                        """, unsafe_allow_html=True)
+                        if st.button("▶ LIGA BOMBA RESERVA", key="btn_liga_b2", use_container_width=True):
+                            db.reference("controle/bomba2_comando").set("ON")
+                            registrar_evento("LIGOU A BOMBA RESERVA (manual web)")
+                            st.rerun()
 
-                with col_b2_off:
-                    inativo_b2 = not b2_ligada
-                    st.markdown(f"""
-                    <div style='background:{"rgba(239,68,68,0.2)" if inativo_b2 else "rgba(239,68,68,0.05)"};
-                        border:{"2px solid #ef4444" if inativo_b2 else "1px solid #ef444440"};
-                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
-                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b2 else COR_MUTED};'>
-                            DESLIGA BOMBA RESERVA
+                    with col_b2_off:
+                        inativo_b2 = not b2_ligada
+                        st.markdown(f"""
+                        <div style='background:{"rgba(239,68,68,0.2)" if inativo_b2 else "rgba(239,68,68,0.05)"};
+                            border:{"2px solid #ef4444" if inativo_b2 else "1px solid #ef444440"};
+                            border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                            <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b2 else COR_MUTED};'>
+                                DESLIGA BOMBA RESERVA
+                            </div>
                         </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    if st.button("⏹ DESLIGA BOMBA RESERVA", key="btn_desliga_b2", use_container_width=True):
-                        db.reference("controle/bomba2_comando").set("OFF")
-                        registrar_evento("DESLIGOU A BOMBA RESERVA (manual web)")
-                        st.rerun()
+                        """, unsafe_allow_html=True)
+                        if st.button("⏹ DESLIGA BOMBA RESERVA", key="btn_desliga_b2", use_container_width=True):
+                            db.reference("controle/bomba2_comando").set("OFF")
+                            registrar_evento("DESLIGOU A BOMBA RESERVA (manual web)")
+                            st.rerun()
 
             # SEÇÃO AUTOMÁTICO DO SUPERVISÓRIO WEB
             else:
@@ -660,7 +686,6 @@ else:
         # 2. MENU: QUADRO DE COMANDO
         # ---------------------------------------------------------------------
         else:
-            # Desativa automático por software no Firebase se selecionado o Quadro de Comando
             if auto_software_ativo:
                 db.reference("controle/auto_software_ativo").set(False)
 
@@ -1202,7 +1227,8 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.3 (supervisório reestruturado conforme especificações ASB AUTOMAÇÃO)
+# LAVANDERIA EXATA - v2.4 (supervisório com separação clara e limpa por abas para Bomba Principal e Bomba Reserva)
 #   - Chave de Seleção Geral: Supervisório Web / Quadro de Comando
-#   - Menu Supervisório Web: Seleção Manual/Automático, Estatus Poço e Botões Liga/Desliga B1 e B2
-#   - Menu Quadro de Comando: Supervisão Passiva (Automático Habilitado, Estatus Poço e Estatus Contatores)
+#   - Menu Supervisório Web: Seleção Manual/Automático, Estatus Poço
+#   - Abas dedicadas no Modo Manual: "💧 BOMBA PRINCIPAL (B1)" e "🔄 BOMBA RESERVA (B2)"
+#   - Menu Quadro de Comando: Supervisão Passiva (Automático, Estatus Poço e Contatores B1 e B2)
