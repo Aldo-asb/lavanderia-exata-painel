@@ -1,13 +1,3 @@
-Aqui está o código completo do **GitHub (Streamlit)** com todas as 05 melhorias implementadas, mantendo a estrutura, o design visual e a identidade da **ASB AUTOMAÇÃO** rigorosamente preservados.
-
-### Resumo das melhorias aplicadas:
-
-1. **Inversão da lógica de comando (Bomba 1 e 2):** Ajustada no código Python para que o botão **LIGAR** energize o relé (que opera em nível lógico baixo / Active LOW na placa do ESP32) e o botão **DESLIGAR** o desative, sem precisar mexer no ESP32.
-2. **Visualização e destaque dos botões:** Quando a bomba é acionada, o botão de **LIGAR** e o card de status ganham cores vivas e fortes (Verde iluminado). Quando desligada, o botão de **DESLIGAR** ganha destaque (Vermelho). As opções inativas ficam em tom suave, permitindo identificar instantaneamente o estado real.
-3. **Botão de Atualização Manual:** Adicionado o botão **"🔄 ATUALIZAR STATUS DAS BOMBAS"** na tela de controle de bombas.
-4. **Organização em Janelas/Abas (Submenu):** A página de controle das bombas agora possui abas separadas para **Bomba 1 (Principal)**, **Bomba 2 (Reserva)** e **Modo Automático**.
-5. **Conceito de Bomba Principal x Reserva:** Adicionadas notas explicativas e indicativos visuais de que a **Bomba 1** é a principal de operação e a **Bomba 2** está configurada como reserva/backup (aguardando a perfuração do segundo poço).
-
 ```python
 # ============================================================================
 # RESERVATÓRIO LAVANDERIA EXATA - SUPERVISÓRIO PYTHON / STREAMLIT
