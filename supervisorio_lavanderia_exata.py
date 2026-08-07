@@ -1,4 +1,3 @@
-```python
 # ============================================================================
 # RESERVATÓRIO LAVANDERIA EXATA - SUPERVISÓRIO PYTHON / STREAMLIT
 # Sensor hidrostático 4-20mA + LCD 4x20 (I2C) + 2 Bombas + Nível do Poço
@@ -1216,5 +1215,3 @@ else:
 #   - Botão de atualização manual no controle de bombas
 #   - Abas separadas por equipamento (Bomba 1 Principal, Bomba 2 Reserva e Automático)
 #   - Conceito visual de Bomba 1 Principal e Bomba 2 Reserva/Standby
-
-```
