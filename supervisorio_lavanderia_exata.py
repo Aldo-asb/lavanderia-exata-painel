@@ -485,7 +485,7 @@ else:
         c1, c2, c3 = st.columns(3, gap="medium")
         cards = [
             ("💧", "Nível em Tempo Real", "Monitoramento contínuo do nível do reservatório via sensor hidrostático 4-20mA (faixa 3,80m), com atualização a cada poucos segundos."),
-            ("🚰", "Controle das Bombas", "Acionamento remoto de duas bombas de recalque (B1 e B2), manual ou automático por nível, com proteção de poço seco e registro de auditoria."),
+            ("🚰", "Controle das Bombas", "Acionamento remoto de duas bombas de recalque (B1 Principal e B2 Reserva), manual ou automático por nível, com proteção de poço seco e registro de auditoria."),
             ("🔔", "Alertas Automáticos", "Notificações por e-mail quando o reservatório atinge nível crítico ou quando o poço está seco, evitando falta de água ou transbordamento."),
         ]
         for col, (icon, title, desc) in zip([c1, c2, c3], cards):
@@ -501,193 +501,214 @@ else:
     elif menu == "🚰 Controle das Bombas":
         st.markdown("<div class='section-header'>Controle das Bombas de Recalque</div>", unsafe_allow_html=True)
 
-        modo = st.radio("Modo de Operação", ["MANUAL", "AUTOMÁTICO"], horizontal=True)
-        st.session_state["modo_operacao"] = modo
-        st.markdown("<br>", unsafe_allow_html=True)
-
         # Le os status reais e comandos do Firebase
         try:
             status_real_b1 = db.reference("reservatorio/bomba1_status").get() or "OFF"
             status_real_b2 = db.reference("reservatorio/bomba2_status").get() or "OFF"
-            cmd_b1 = db.reference("reservatorio/bomba1_comando").get() or "OFF"
-            cmd_b2 = db.reference("reservatorio/bomba2_comando").get() or "OFF"
+            cmd_b1 = db.reference("controle/bomba1_comando").get() or "OFF"
+            cmd_b2 = db.reference("controle/bomba2_comando").get() or "OFF"
             nivel_poco = db.reference("reservatorio/nivel_poco").get() or "OK"
-        except:
-            status_real_b1, status_real_b2 = "DESCONHECIDO", "DESCONHECIDO"
-            cmd_b1, cmd_b2 = "DESCONHECIDO", "DESCONHECIDO"
-            nivel_poco = "DESCONHECIDO"
-
-        # Estado do automático por software
-        try:
             auto_software_ativo = db.reference("controle/auto_software_ativo").get() or False
         except:
+            status_real_b1, status_real_b2 = "DESCONHECIDO", "DESCONHECIDO"
+            cmd_b1, cmd_b2 = "OFF", "OFF"
+            nivel_poco = "DESCONHECIDO"
             auto_software_ativo = False
 
-        # Alerta de poço seco
-        if nivel_poco == "BAIXO":
-            st.markdown("""
-            <div class='poco-seco-alert'>
-                ⚠️ NÍVEL DO POÇO BAIXO — As bombas estão PROTEGIDAS e não ligarão no automático.
-                Verifique o abastecimento do poço antes de forçar o acionamento manual.
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div class='poco-ok-alert'>
-                ✅ Nível do poço OK — Abastecimento normal.
-            </div>
-            """, unsafe_allow_html=True)
+        b1_ligada = (status_real_b1 == "ON" or cmd_b1 == "ON")
+        b2_ligada = (status_real_b2 == "ON" or cmd_b2 == "ON")
 
-        if modo == "MANUAL":
-            # Cards de status das bombas
-            col_status1, col_status2 = st.columns(2, gap="medium")
-
-            with col_status1:
-                cor_b1 = "#22c55e" if status_real_b1 == "ON" else "#ef4444"
-                label_b1 = "● BOMBA 1 LIGADA" if status_real_b1 == "ON" else "○ BOMBA 1 DESLIGADA"
-                st.markdown(f"""
-                <div style='text-align:center; margin-bottom:16px; padding:12px; border-radius:10px; border:1px solid {cor_b1}; background:rgba({"34,197,94" if status_real_b1=="ON" else "239,68,68"},0.08);'>
-                    <span style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px; color:{cor_b1};'>
-                        {label_b1}
-                    </span><br>
-                    <small style='color:{COR_MUTED};'>Comando ESP: {cmd_b1}</small>
-                </div>
-                """, unsafe_allow_html=True)
-
-            with col_status2:
-                cor_b2 = "#22c55e" if status_real_b2 == "ON" else "#ef4444"
-                label_b2 = "● BOMBA 2 LIGADA" if status_real_b2 == "ON" else "○ BOMBA 2 DESLIGADA"
-                st.markdown(f"""
-                <div style='text-align:center; margin-bottom:16px; padding:12px; border-radius:10px; border:1px solid {cor_b2}; background:rgba({"34,197,94" if status_real_b2=="ON" else "239,68,68"},0.08);'>
-                    <span style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px; color:{cor_b2};'>
-                        {label_b2}
-                    </span><br>
-                    <small style='color:{COR_MUTED};'>Comando ESP: {cmd_b2}</small>
-                </div>
-                """, unsafe_allow_html=True)
-
-            if auto_software_ativo:
-                st.markdown("""
-                <div class='auto-info'>⚠️ O automático por software está <b>ATIVO</b> (aba
-                Automático). O ESP32 decide sozinho com base no nível e pode sobrescrever o
-                comando manual abaixo. Desative o automático por software se quiser controle
-                100% manual.</div>
-                """, unsafe_allow_html=True)
-
-            # Controles B1
-            st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:600; color:{COR_TITULO}; letter-spacing:2px; margin:16px 0 12px 0;'>🔧 BOMBA 1</div>", unsafe_allow_html=True)
-            col1_b1, col2_b1 = st.columns(2, gap="large")
-            with col1_b1:
-                ativo = status_real_b1 == "ON"
-                st.markdown(f"""
-                <div style='background:{"rgba(34,197,94,0.15)" if ativo else "rgba(34,197,94,0.05)"};
-                    border:{"2px solid #22c55e" if ativo else "1px solid #22c55e40"};
-                    border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
-                    <div style='font-size:32px; margin-bottom:8px;'>💧</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; 
-                        letter-spacing:2px; color:#22c55e;'>LIGAR B1</div>
-                    <div class='barra-wrap' style='margin-top:14px;'>
-                        <div class='{"barra-on" if ativo else "barra-inativa"}'></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("▶ LIGAR B1", key="btn_ligar_b1", use_container_width=True):
-                    db.reference("controle/bomba1_comando").set("ON")
-                    registrar_evento("LIGOU A BOMBA 1 (manual)")
-                    st.rerun()
-
-            with col2_b1:
-                ativo = status_real_b1 == "OFF"
-                st.markdown(f"""
-                <div style='background:{"rgba(239,68,68,0.15)" if ativo else "rgba(239,68,68,0.05)"};
-                    border:{"2px solid #ef4444" if ativo else "1px solid #ef444440"};
-                    border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
-                    <div style='font-size:32px; margin-bottom:8px;'>⭕</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700;
-                        letter-spacing:2px; color:#ef4444;'>DESLIGAR B1</div>
-                    <div class='barra-wrap' style='margin-top:14px;'>
-                        <div class='{"barra-off" if ativo else "barra-inativa"}'></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("⏹ DESLIGAR B1", key="btn_desligar_b1", use_container_width=True):
-                    db.reference("controle/bomba1_comando").set("OFF")
-                    registrar_evento("DESLIGOU A BOMBA 1 (manual)")
-                    st.rerun()
-
-            # Controles B2
-            st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:600; color:{COR_TITULO}; letter-spacing:2px; margin:24px 0 12px 0;'>🔧 BOMBA 2</div>", unsafe_allow_html=True)
-            col1_b2, col2_b2 = st.columns(2, gap="large")
-            with col1_b2:
-                ativo = status_real_b2 == "ON"
-                st.markdown(f"""
-                <div style='background:{"rgba(34,197,94,0.15)" if ativo else "rgba(34,197,94,0.05)"};
-                    border:{"2px solid #22c55e" if ativo else "1px solid #22c55e40"};
-                    border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
-                    <div style='font-size:32px; margin-bottom:8px;'>💧</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; 
-                        letter-spacing:2px; color:#22c55e;'>LIGAR B2</div>
-                    <div class='barra-wrap' style='margin-top:14px;'>
-                        <div class='{"barra-on" if ativo else "barra-inativa"}'></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("▶ LIGAR B2", key="btn_ligar_b2", use_container_width=True):
-                    db.reference("controle/bomba2_comando").set("ON")
-                    registrar_evento("LIGOU A BOMBA 2 (manual)")
-                    st.rerun()
-
-            with col2_b2:
-                ativo = status_real_b2 == "OFF"
-                st.markdown(f"""
-                <div style='background:{"rgba(239,68,68,0.15)" if ativo else "rgba(239,68,68,0.05)"};
-                    border:{"2px solid #ef4444" if ativo else "1px solid #ef444440"};
-                    border-radius:14px; padding:28px 16px 16px 16px; text-align:center; margin-bottom:12px;'>
-                    <div style='font-size:32px; margin-bottom:8px;'>⭕</div>
-                    <div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700;
-                        letter-spacing:2px; color:#ef4444;'>DESLIGAR B2</div>
-                    <div class='barra-wrap' style='margin-top:14px;'>
-                        <div class='{"barra-off" if ativo else "barra-inativa"}'></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                if st.button("⏹ DESLIGAR B2", key="btn_desligar_b2", use_container_width=True):
-                    db.reference("controle/bomba2_comando").set("OFF")
-                    registrar_evento("DESLIGOU A BOMBA 2 (manual)")
-                    st.rerun()
-
-        else:
-            st.markdown("""
-            <div class='auto-info'>🌊 <b>AUTOMÁTICO POR HARDWARE (BÓIA)</b> — hoje quem liga e
-            desliga as bombas sozinha é a bóia elétrica instalada no quadro das bombas. O controle
-            abaixo é um <b>backup por software</b>, para os casos em que a bóia apresentar algum
-            problema. Se o poço estiver seco, o software NÃO liga as bombas, mesmo no automático.</div>
-            """, unsafe_allow_html=True)
-
-            novo_auto = st.toggle(
-                "🤖 Ativar automático por SOFTWARE (backup da bóia)",
-                value=bool(auto_software_ativo),
-                key="toggle_auto_software"
+        # SELEÇÃO DO MODO DE OPERAÇÃO GERAL (CHAVE DE SELEÇÃO)
+        st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:8px;'>🎛️ MODO DE OPERAÇÃO GERAL</div>", unsafe_allow_html=True)
+        
+        col_modo, col_ref = st.columns([3, 1])
+        with col_modo:
+            modo_selecionado = st.radio(
+                "Selecione a origem de controle",
+                ["Supervisório Web", "Quadro de Comando"],
+                horizontal=True,
+                label_visibility="collapsed"
             )
-            if novo_auto != auto_software_ativo:
-                db.reference("controle/auto_software_ativo").set(novo_auto)
-                registrar_evento("ATIVOU o automático por software" if novo_auto else "DESATIVOU o automático por software")
+        with col_ref:
+            if st.button("🔄 ATUALIZAR STATUS", use_container_width=True):
                 st.rerun()
 
-            if novo_auto:
-                st.markdown(f"""
-                <div class='diag-info-row'>
-                    <span>📉</span><span class='diag-info-label'>Liga as bombas abaixo de:</span><span>{BOMBA_LIGA_PCT}% do reservatório</span>
-                </div>
-                <div class='diag-info-row'>
-                    <span>📈</span><span class='diag-info-label'>Desliga as bombas acima de:</span><span>{BOMBA_DESLIGA_PCT}% do reservatório</span>
-                </div>
-                <div class='diag-info-row'>
-                    <span>🛡️</span><span class='diag-info-label'>Proteção de poço seco:</span><span>ATIVA (não liga se poço BAIXO)</span>
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # ---------------------------------------------------------------------
+        # 1. MENU: SUPERVISÓRIO WEB
+        # ---------------------------------------------------------------------
+        if modo_selecionado == "Supervisório Web":
+            st.markdown(f"""
+            <div style='background:rgba({COR_ACCENT_RGB},0.08); border:1px solid {COR_ACCENT}; border-radius:12px; padding:16px; margin-bottom:20px;'>
+                <b style='color:{COR_ACCENT}; font-size:16px;'>🌐 CONTROLE VIA SUPERVISÓRIO WEB ATIVO</b><br>
+                <span style='font-size:13px; color:{COR_TEXTO};'>Neste modo os comandos remotos de Liga/Desliga e o Automático por Software via IoT gerenciam a operação.</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Seleção Manual / Automático do Supervisório Web
+            sub_modo_web = st.radio("Modo do Supervisório Web", ["MANUAL", "AUTOMÁTICO"], horizontal=True)
+
+            # Status de Nível do Poço
+            if nivel_poco == "BAIXO":
+                st.markdown("""
+                <div class='poco-seco-alert'>
+                    ⚠️ ESTATUS NÍVEL DO POÇO: <b>BAIXO</b> — As bombas estão PROTEGIDAS e não ligarão no automático.
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Automático por software desligado — a bóia elétrica está no comando.</div>", unsafe_allow_html=True)
+                st.markdown("""
+                <div class='poco-ok-alert'>
+                    ✅ ESTATUS NÍVEL DO POÇO: <b>NORMAL (OK)</b> — Abastecimento liberado.
+                </div>
+                """, unsafe_allow_html=True)
+
+            # SEÇÃO MANUAL DO SUPERVISÓRIO WEB
+            if sub_modo_web == "MANUAL":
+                # Se o automático por software estiver ativo no Firebase, desativa
+                if auto_software_ativo:
+                    db.reference("controle/auto_software_ativo").set(False)
+
+                st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:20px 0 12px 0;'>💧 BOMBA PRINCIPAL (B1)</div>", unsafe_allow_html=True)
+                col_b1_on, col_b1_off = st.columns(2, gap="large")
+
+                with col_b1_on:
+                    ativo_b1 = b1_ligada
+                    st.markdown(f"""
+                    <div style='background:{"rgba(34,197,94,0.2)" if ativo_b1 else "rgba(34,197,94,0.05)"};
+                        border:{"2px solid #22c55e" if ativo_b1 else "1px solid #22c55e40"};
+                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b1 else COR_MUTED};'>
+                            LIGA BOMBA PRINCIPAL
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("▶ LIGA BOMBA PRINCIPAL", key="btn_liga_b1", use_container_width=True):
+                        db.reference("controle/bomba1_comando").set("ON")
+                        registrar_evento("LIGOU A BOMBA PRINCIPAL (manual web)")
+                        st.rerun()
+
+                with col_b1_off:
+                    inativo_b1 = not b1_ligada
+                    st.markdown(f"""
+                    <div style='background:{"rgba(239,68,68,0.2)" if inativo_b1 else "rgba(239,68,68,0.05)"};
+                        border:{"2px solid #ef4444" if inativo_b1 else "1px solid #ef444440"};
+                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b1 else COR_MUTED};'>
+                            DESLIGA BOMBA PRINCIPAL
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("⏹ DESLIGA BOMBA PRINCIPAL", key="btn_desliga_b1", use_container_width=True):
+                        db.reference("controle/bomba1_comando").set("OFF")
+                        registrar_evento("DESLIGOU A BOMBA PRINCIPAL (manual web)")
+                        st.rerun()
+
+                st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:24px 0 12px 0;'>🔄 BOMBA RESERVA (B2)</div>", unsafe_allow_html=True)
+                col_b2_on, col_b2_off = st.columns(2, gap="large")
+
+                with col_b2_on:
+                    ativo_b2 = b2_ligada
+                    st.markdown(f"""
+                    <div style='background:{"rgba(34,197,94,0.2)" if ativo_b2 else "rgba(34,197,94,0.05)"};
+                        border:{"2px solid #22c55e" if ativo_b2 else "1px solid #22c55e40"};
+                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#22c55e" if ativo_b2 else COR_MUTED};'>
+                            LIGA BOMBA RESERVA
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("▶ LIGA BOMBA RESERVA", key="btn_liga_b2", use_container_width=True):
+                        db.reference("controle/bomba2_comando").set("ON")
+                        registrar_evento("LIGOU A BOMBA RESERVA (manual web)")
+                        st.rerun()
+
+                with col_b2_off:
+                    inativo_b2 = not b2_ligada
+                    st.markdown(f"""
+                    <div style='background:{"rgba(239,68,68,0.2)" if inativo_b2 else "rgba(239,68,68,0.05)"};
+                        border:{"2px solid #ef4444" if inativo_b2 else "1px solid #ef444440"};
+                        border-radius:12px; padding:20px 16px; text-align:center; margin-bottom:10px;'>
+                        <div style='font-family:Rajdhani,sans-serif; font-size:18px; font-weight:700; color:{"#ef4444" if inativo_b2 else COR_MUTED};'>
+                            DESLIGA BOMBA RESERVA
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    if st.button("⏹ DESLIGA BOMBA RESERVA", key="btn_desliga_b2", use_container_width=True):
+                        db.reference("controle/bomba2_comando").set("OFF")
+                        registrar_evento("DESLIGOU A BOMBA RESERVA (manual web)")
+                        st.rerun()
+
+            # SEÇÃO AUTOMÁTICO DO SUPERVISÓRIO WEB
+            else:
+                if not auto_software_ativo:
+                    db.reference("controle/auto_software_ativo").set(True)
+                    registrar_evento("ATIVOU automático por software (supervisório web)")
+
+                st.markdown(f"""
+                <div class='auto-info'>
+                    🤖 <b>MODO AUTOMÁTICO VIA SUPERVISÓRIO WEB ATIVO</b><br><br>
+                    O ESP32 monitora o nível em tempo real via sensor hidrostático de 4-20mA e executa a automação conforme parâmetros:<br><br>
+                    • <b>Liga a Bomba Principal:</b> quando nível < <b>{BOMBA_LIGA_PCT}%</b><br>
+                    • <b>Desliga as Bombas:</b> quando nível >= <b>{BOMBA_DESLIGA_PCT}%</b><br>
+                    • <b>Proteção de Poço Seco:</b> Se Nível do Poço = BAIXO, impede a partida automática.<br>
+                    • <b>Bomba Reserva:</b> Permanece em Standby de emergência.
+                </div>
+                """, unsafe_allow_html=True)
+
+        # ---------------------------------------------------------------------
+        # 2. MENU: QUADRO DE COMANDO
+        # ---------------------------------------------------------------------
+        else:
+            # Desativa automático por software no Firebase se selecionado o Quadro de Comando
+            if auto_software_ativo:
+                db.reference("controle/auto_software_ativo").set(False)
+
+            st.markdown(f"""
+            <div style='background:rgba(245,158,11,0.08); border:1px solid #f59e0b; border-radius:12px; padding:16px; margin-bottom:20px;'>
+                <b style='color:#f59e0b; font-size:16px;'>⚡ MODO QUADRO DE COMANDO (PAINEL FÍSICO)</b><br>
+                <span style='font-size:13px; color:{COR_TEXTO};'>Supervisão passiva e leitura dos sensores/contatores do painel elétrico de campo.</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Estatus Automático do Quadro
+            st.markdown(f"""
+            <div class='diag-info-row'>
+                <span style='font-size:20px;'>⚙️</span>
+                <span class='diag-info-label'>AUTOMÁTICO DO QUADRO:</span>
+                <span style='color:{COR_ACCENT}; font-weight:700;'>HABILITADO (Comando por Bóia Elétrica)</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Estatus Nível do Poço
+            cor_poco = "#22c55e" if nivel_poco == "OK" else "#ef4444"
+            st.markdown(f"""
+            <div class='diag-info-row'>
+                <span style='font-size:20px;'>💧</span>
+                <span class='diag-info-label'>ESTATUS NÍVEL DO POÇO:</span>
+                <span style='color:{cor_poco}; font-weight:700;'>{nivel_poco} ({'ÁGUA OK' if nivel_poco=='OK' else 'POÇO SECO'})</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Estatus do Contator Bomba Principal
+            cor_c1 = "#22c55e" if status_real_b1 == "ON" else "#ef4444"
+            st.markdown(f"""
+            <div class='diag-info-row'>
+                <span style='font-size:20px;'>🔌</span>
+                <span class='diag-info-label'>ESTATUS DO CONTATOR BOMBA PRINCIPAL:</span>
+                <span style='color:{cor_c1}; font-weight:700;'>{status_real_b1} ({'CONTATOR FECHADO / ATIVO' if status_real_b1=='ON' else 'CONTATOR ABERTO / DESLIGADO'})</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # Estatus do Contator Bomba Reserva
+            cor_c2 = "#22c55e" if status_real_b2 == "ON" else "#ef4444"
+            st.markdown(f"""
+            <div class='diag-info-row'>
+                <span style='font-size:20px;'>🔌</span>
+                <span class='diag-info-label'>ESTATUS DO CONTATOR BOMBA RESERVA:</span>
+                <span style='color:{cor_c2}; font-weight:700;'>{status_real_b2} ({'CONTATOR FECHADO / ATIVO' if status_real_b2=='ON' else 'CONTATOR ABERTO / DESLIGADO'})</span>
+            </div>
+            """, unsafe_allow_html=True)
 
     # ─── NÍVEL DO RESERVATÓRIO ──────────────────────────────────────────────
     elif menu == "💧 Nível do Reservatório":
@@ -733,7 +754,6 @@ else:
         pct_barra_nivel = min(max(pct_exibir or 0, 0), 100) if pct_exibir is not None else 0
         pct_barra_volume = min(max(((volume_exibir or 0) / CAPACIDADE_LITROS) * 100, 0), 100) if volume_exibir is not None else 0
 
-        # Alerta de poço seco na aba de medição também
         if nivel_poco == "BAIXO":
             st.markdown("""
             <div style='background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.4);
@@ -867,7 +887,7 @@ else:
             for v in cache_eventos.values():
                 dt = _ts_para_datahora(v.get("data"))
                 if dt is not None and dt.date() == data_alvo:
-                    bomba = v.get("bomba", "B1")  # fallback para compatibilidade antiga
+                    bomba = v.get("bomba", "B1")
                     if bomba_filtro is None or bomba == bomba_filtro:
                         eventos.append({"horario": dt, "evento": v.get("evento"), "bomba": bomba})
             eventos.sort(key=lambda x: x["horario"])
@@ -903,7 +923,6 @@ else:
         except Exception:
             cache_eventos_bomba = {}
 
-        # ── CONSUMO DE ÁGUA ──────────────────────────────────────────────
         st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>💧 CONSUMO DE ÁGUA</div>", unsafe_allow_html=True)
 
         data_selecionada = st.date_input("Selecione o dia", value=obter_hora_brasilia().date())
@@ -976,7 +995,6 @@ else:
 
         st.markdown("<br><br>", unsafe_allow_html=True)
 
-        # ── COMPARATIVO 7 DIAS ──────────────────────────────────────────
         st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>📅 COMPARATIVO — ÚLTIMOS 7 DIAS</div>", unsafe_allow_html=True)
 
         hoje = obter_hora_brasilia().date()
@@ -999,7 +1017,6 @@ else:
 
         st.markdown("<br><br>", unsafe_allow_html=True)
 
-        # ── HISTÓRICO DE AÇÕES ─────────────────────────────────────────
         st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>📝 HISTÓRICO DE AÇÕES</div>", unsafe_allow_html=True)
 
         if st.session_state["is_admin"]:
@@ -1083,12 +1100,12 @@ else:
         </div>
         <div class='diag-info-row'>
             <span>🔌</span>
-            <span class='diag-info-label'>Bomba 1 (real / comando):</span>
+            <span class='diag-info-label'>Bomba Principal (real / comando):</span>
             <span>{status_b1} / {cmd_b1}</span>
         </div>
         <div class='diag-info-row'>
             <span>🔌</span>
-            <span class='diag-info-label'>Bomba 2 (real / comando):</span>
+            <span class='diag-info-label'>Bomba Reserva (real / comando):</span>
             <span>{status_b2} / {cmd_b2}</span>
         </div>
         <div class='diag-info-row'>
@@ -1185,9 +1202,7 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.0 (supervisório alinhado com firmware v2.0)
-#   - Sensor de 5m (faixa util 3,80m)
-#   - Duas bombas com controle individual (B1 e B2)
-#   - Feedback real dos contatores auxiliares
-#   - Nível do poço com proteção de seco
-#   - Relatórios separados por bomba
+# LAVANDERIA EXATA - v2.3 (supervisório reestruturado conforme especificações ASB AUTOMAÇÃO)
+#   - Chave de Seleção Geral: Supervisório Web / Quadro de Comando
+#   - Menu Supervisório Web: Seleção Manual/Automático, Estatus Poço e Botões Liga/Desliga B1 e B2
+#   - Menu Quadro de Comando: Supervisão Passiva (Automático Habilitado, Estatus Poço e Estatus Contatores)
