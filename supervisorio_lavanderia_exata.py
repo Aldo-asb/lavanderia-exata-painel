@@ -515,17 +515,17 @@ else:
         try:
             status_real_b1 = db.reference("reservatorio/bomba1_status").get() or "OFF"
             status_real_b2 = db.reference("reservatorio/bomba2_status").get() or "OFF"
-            cmd_b1 = db.reference("controle/bomba1_comando").get() or "ON"
-            cmd_b2 = db.reference("controle/bomba2_comando").get() or "ON"
+            cmd_b1 = db.reference("controle/bomba1_comando").get() or "OFF"
+            cmd_b2 = db.reference("controle/bomba2_comando").get() or "OFF"
             nivel_poco = db.reference("reservatorio/nivel_poco").get() or "OK"
         except:
             status_real_b1, status_real_b2 = "DESCONHECIDO", "DESCONHECIDO"
-            cmd_b1, cmd_b2 = "ON", "ON"
+            cmd_b1, cmd_b2 = "OFF", "OFF"
             nivel_poco = "DESCONHECIDO"
 
-        # Lógica de relé Active LOW no ESP32: comando 'OFF' energiza a bomba e 'ON' desenergiza
-        b1_ligada = (status_real_b1 == "ON" or cmd_b1 == "OFF")
-        b2_ligada = (status_real_b2 == "ON" or cmd_b2 == "OFF")
+        # Lógica de relé Active LOW no ESP32 (firmware v2.4+): comando 'ON' energiza a bomba, 'OFF' desenergiza
+        b1_ligada = (status_real_b1 == "ON" or cmd_b1 == "ON")
+        b2_ligada = (status_real_b2 == "ON" or cmd_b2 == "ON")
 
         # Estado do automático por software
         try:
@@ -566,7 +566,7 @@ else:
                 <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b1};'>
                     {label_b1}
                 </span><br>
-                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b1}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b1=='OFF' else 'DESLIGAR'}</b></small>
+                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b1}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b1=='ON' else 'DESLIGAR'}</b></small>
             </div>
             """, unsafe_allow_html=True)
 
@@ -587,8 +587,8 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     if st.button("▶ LIGAR BOMBA 1", key="btn_ligar_b1", use_container_width=True):
-                        # Envia 'OFF' para energizar relé Active LOW no ESP32
-                        db.reference("controle/bomba1_comando").set("OFF")
+                        # Envia 'ON' para energizar relé Active LOW no ESP32 (firmware v2.4+)
+                        db.reference("controle/bomba1_comando").set("ON")
                         registrar_evento("LIGOU A BOMBA 1 (manual)")
                         st.rerun()
 
@@ -607,8 +607,8 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     if st.button("⏹ DESLIGAR BOMBA 1", key="btn_desligar_b1", use_container_width=True):
-                        # Envia 'ON' para desenergizar relé Active LOW no ESP32
-                        db.reference("controle/bomba1_comando").set("ON")
+                        # Envia 'OFF' para desenergizar relé Active LOW no ESP32 (firmware v2.4+)
+                        db.reference("controle/bomba1_comando").set("OFF")
                         registrar_evento("DESLIGOU A BOMBA 1 (manual)")
                         st.rerun()
             else:
@@ -629,7 +629,7 @@ else:
                 <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b2};'>
                     {label_b2}
                 </span><br>
-                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b2}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b2=='OFF' else 'DESLIGAR'}</b></small>
+                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b2}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b2=='ON' else 'DESLIGAR'}</b></small>
             </div>
             """, unsafe_allow_html=True)
 
@@ -650,8 +650,8 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     if st.button("▶ LIGAR BOMBA 2", key="btn_ligar_b2", use_container_width=True):
-                        # Envia 'OFF' para energizar relé Active LOW no ESP32
-                        db.reference("controle/bomba2_comando").set("OFF")
+                        # Envia 'ON' para energizar relé Active LOW no ESP32 (firmware v2.4+)
+                        db.reference("controle/bomba2_comando").set("ON")
                         registrar_evento("LIGOU A BOMBA 2 (manual)")
                         st.rerun()
 
@@ -670,8 +670,8 @@ else:
                     </div>
                     """, unsafe_allow_html=True)
                     if st.button("⏹ DESLIGAR BOMBA 2", key="btn_desligar_b2", use_container_width=True):
-                        # Envia 'ON' para desenergizar relé Active LOW no ESP32
-                        db.reference("controle/bomba2_comando").set("ON")
+                        # Envia 'OFF' para desenergizar relé Active LOW no ESP32 (firmware v2.4+)
+                        db.reference("controle/bomba2_comando").set("OFF")
                         registrar_evento("DESLIGOU A BOMBA 2 (manual)")
                         st.rerun()
             else:
@@ -1108,12 +1108,12 @@ else:
         <div class='diag-info-row'>
             <span>🔌</span>
             <span class='diag-info-label'>Bomba 1 (real / comando):</span>
-            <span>{status_b1} / {'LIGAR' if cmd_b1=='OFF' else 'DESLIGAR'}</span>
+            <span>{status_b1} / {'LIGAR' if cmd_b1=='ON' else 'DESLIGAR'}</span>
         </div>
         <div class='diag-info-row'>
             <span>🔌</span>
             <span class='diag-info-label'>Bomba 2 (real / comando):</span>
-            <span>{status_b2} / {'LIGAR' if cmd_b2=='OFF' else 'DESLIGAR'}</span>
+            <span>{status_b2} / {'LIGAR' if cmd_b2=='ON' else 'DESLIGAR'}</span>
         </div>
         <div class='diag-info-row'>
             <span>💧</span>
@@ -1209,7 +1209,9 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.2 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
+# LAVANDERIA EXATA - v2.3 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
+#   - CORRIGIDO: convenção de comando das bombas alinhada ao firmware v2.4+ do ESP32
+#     ("ON" = liga a bomba / energiza o relé, "OFF" = desliga a bomba / desenergiza o relé)
 #   - Adequação dos botões Ligar/Desligar para relés Active LOW do ESP32
 #   - Destaque visual forte e dinâmico dos botões conforme estado acionado/desligado
 #   - Botão de atualização manual no controle de bombas
