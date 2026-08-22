@@ -20,29 +20,42 @@ ALTURA_MAXIMA_M = 3.80        # faixa util do sensor de 5m (coluna real do reser
 NIVEL_BAIXO_PCT = 15          # % abaixo do qual dispara alerta de nivel baixo (email)
 NIVEL_CHEIO_PCT = 95          # % acima do qual dispara alerta de reservatorio cheio (email)
 
-# Faixa de acionamento da BOMBA (precisa ser IDENTICA ao .ino)
+# Faixa de acionamento da BOMBA (valores padrao - podem ser sobrescritos pelo admin, ver Firebase)
 BOMBA_LIGA_PCT = 70     # liga a bomba abaixo disso
 BOMBA_DESLIGA_PCT = 95  # desliga a bomba acima disso
 
 # --- 2. CONFIGURAÇÃO VISUAL (TEMA CLARO/ESCURO) ---
 st.set_page_config(page_title="Lavanderia Exata - Supervisório", layout="wide", initial_sidebar_state="expanded")
 
-tema_claro = st.session_state.get("tema_claro", False)
+tema_atual = st.session_state.get("tema", "Branco")
 
-if tema_claro:
-    COR_BG = "#f4f6fb"
+if tema_atual == "Branco":
+    COR_BG = "#ffffff"
     COR_TEXTO = "#1e293b"
-    COR_SIDEBAR_BG = "#ffffff"
-    COR_BORDA = "#dbe3f0"
+    COR_SIDEBAR_BG = "#f8fafc"
+    COR_BORDA = "#e2e8f0"
     COR_CARD_BG = "#ffffff"
-    COR_CARD_BG2 = "#eef2fb"
+    COR_CARD_BG2 = "#f1f5f9"
     COR_MUTED = "#64748b"
     COR_MUTED2 = "#94a3b8"
     COR_ACCENT = "#2563eb"
     COR_ACCENT_RGB = "37,99,235"
     COR_TITULO = "#0f172a"
     COR_INPUT_BG = "#ffffff"
-else:
+elif tema_atual == "Cinza Claro":
+    COR_BG = "#e8ecf1"
+    COR_TEXTO = "#1e293b"
+    COR_SIDEBAR_BG = "#dde3ea"
+    COR_BORDA = "#c7d0dc"
+    COR_CARD_BG = "#f4f6f9"
+    COR_CARD_BG2 = "#e2e8f0"
+    COR_MUTED = "#64748b"
+    COR_MUTED2 = "#94a3b8"
+    COR_ACCENT = "#2563eb"
+    COR_ACCENT_RGB = "37,99,235"
+    COR_TITULO = "#0f172a"
+    COR_INPUT_BG = "#ffffff"
+else:  # Escuro
     COR_BG = "#0a0e1a"
     COR_TEXTO = "#e0e6f0"
     COR_SIDEBAR_BG = "#0d1220"
@@ -407,7 +420,7 @@ def checar_dado_fresco(ultimo_pulso_ms, tolerancia_segundos=60):
 # --- 4. ESTADOS ---
 defaults = {
     "logado": False, "is_admin": False, "email_ativo": True,
-    "modo_operacao": "MANUAL", "ciclo_ativo": False, "tema_claro": False
+    "modo_operacao": "MANUAL", "ciclo_ativo": False, "tema": "Branco"
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
@@ -463,7 +476,11 @@ else:
         menu = st.radio("Navegação", opts, label_visibility="collapsed")
 
         st.divider()
-        st.session_state["tema_claro"] = st.toggle("🌓 Tema Claro", value=st.session_state["tema_claro"])
+        st.session_state["tema"] = st.radio(
+            "🌓 Tema", ["Branco", "Cinza Claro", "Escuro"],
+            index=["Branco", "Cinza Claro", "Escuro"].index(st.session_state["tema"]),
+            horizontal=True
+        )
         st.session_state["email_ativo"] = st.toggle("📧 Notificações por Email", value=st.session_state["email_ativo"])
 
         num_wa = st.text_input("WhatsApp Suporte (com DDD)", placeholder="5511999999999")
@@ -518,14 +535,23 @@ else:
             cmd_b1 = db.reference("controle/bomba1_comando").get() or "OFF"
             cmd_b2 = db.reference("controle/bomba2_comando").get() or "OFF"
             nivel_poco = db.reference("reservatorio/nivel_poco").get() or "OK"
+            ultimo_pulso_ctrl = db.reference("reservatorio/ultimo_pulso").get()
         except:
             status_real_b1, status_real_b2 = "DESCONHECIDO", "DESCONHECIDO"
             cmd_b1, cmd_b2 = "OFF", "OFF"
             nivel_poco = "DESCONHECIDO"
+            ultimo_pulso_ctrl = None
 
-        # Lógica de relé Active LOW no ESP32 (firmware v2.4+): comando 'ON' energiza a bomba, 'OFF' desenergiza
-        b1_ligada = (status_real_b1 == "ON" or cmd_b1 == "ON")
-        b2_ligada = (status_real_b2 == "ON" or cmd_b2 == "ON")
+        online = checar_dado_fresco(ultimo_pulso_ctrl, tolerancia_segundos=45)
+
+        # Status REAL de operação (contato auxiliar) - só é confiável se houver comunicação.
+        # Separado do comando (o que foi enviado), para não confundir "está operando" com "luz do botão".
+        b1_operando = online and (status_real_b1 == "ON")
+        b2_operando = online and (status_real_b2 == "ON")
+
+        # Comando enviado (usado só para acender/apagar o botão pressionado, não representa operação real)
+        comando_b1_ligar = (cmd_b1 == "ON")
+        comando_b2_ligar = (cmd_b2 == "ON")
 
         # Estado do automático por software
         try:
@@ -533,20 +559,31 @@ else:
         except:
             auto_software_ativo = False
 
-        # Alerta de poço seco
-        if nivel_poco == "BAIXO":
+        # Aviso geral de comunicação (item 01/02): sem comunicação, não exibimos status
+        # de poço nem de bombas para não confundir o operador com dado desatualizado.
+        if not online:
             st.markdown("""
-            <div class='poco-seco-alert'>
-                ⚠️ NÍVEL DO POÇO BAIXO — As bombas estão PROTEGIDAS e não ligarão no automático.
-                Verifique o abastecimento do poço antes de forçar o acionamento manual.
+            <div style='background:rgba(100,116,139,0.1); border:1px solid rgba(100,116,139,0.4);
+                border-radius:10px; padding:14px 20px; margin-bottom:20px; text-align:center;
+                color:#94a3b8; font-size:14px; font-weight:600; letter-spacing:1px;'>
+                📡 SEM COMUNICAÇÃO COM O DISPOSITIVO — status do poço e das bombas indisponíveis no momento.
             </div>
             """, unsafe_allow_html=True)
         else:
-            st.markdown("""
-            <div class='poco-ok-alert'>
-                ✅ Nível do poço OK — Abastecimento normal.
-            </div>
-            """, unsafe_allow_html=True)
+            # Alerta de poço seco (só exibido com comunicação ativa)
+            if nivel_poco == "BAIXO":
+                st.markdown("""
+                <div class='poco-seco-alert'>
+                    ⚠️ NÍVEL DO POÇO BAIXO — As bombas estão PROTEGIDAS e não ligarão no automático.
+                    Verifique o abastecimento do poço antes de forçar o acionamento manual.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class='poco-ok-alert'>
+                    ✅ Nível do poço OK — Abastecimento normal.
+                </div>
+                """, unsafe_allow_html=True)
 
         # ABAS DE NAVEGAÇÃO / SUBMENU PARA AS BOMBAS
         tab_b1, tab_b2, tab_auto = st.tabs(["💧 BOMBA 1 (Principal)", "🔄 BOMBA 2 (Reserva)", "🤖 MODO AUTOMÁTICO"])
@@ -556,24 +593,36 @@ else:
             st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:12px 0 8px 0;'>💧 BOMBA 1 — EQUIPAMENTO PRINCIPAL</div>", unsafe_allow_html=True)
             st.markdown(f"<div style='color:{COR_MUTED}; font-size:13px; margin-bottom:16px;'>Bomba primária conectada ao Poço 1. Esta é a bomba responsável pelo abastecimento diário.</div>", unsafe_allow_html=True)
 
-            # Card de Status B1
-            cor_b1 = "#22c55e" if b1_ligada else "#ef4444"
-            label_b1 = "● BOMBA 1 LIGADA (EM OPERAÇÃO)" if b1_ligada else "○ BOMBA 1 DESLIGADA (PARADA)"
-            bg_card_b1 = "rgba(34,197,94,0.18)" if b1_ligada else "rgba(239,68,68,0.12)"
-            
-            st.markdown(f"""
-            <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid {cor_b1}; background:{bg_card_b1};'>
-                <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b1};'>
-                    {label_b1}
-                </span><br>
-                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b1}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b1=='ON' else 'DESLIGAR'}</b></small>
-            </div>
-            """, unsafe_allow_html=True)
+            # Card de STATUS REAL DE OPERAÇÃO (item 01/02/04) — reflete o contato auxiliar, não o botão.
+            # Só é exibido com comunicação ativa; sem comunicação mostra estado neutro (não confunde o operador).
+            if not online:
+                st.markdown(f"""
+                <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid #64748b; background:rgba(100,116,139,0.1);'>
+                    <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:#94a3b8;'>
+                        📡 SEM COMUNICAÇÃO — STATUS INDISPONÍVEL
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                cor_b1 = "#22c55e" if b1_operando else "#ef4444"
+                label_b1 = "● BOMBA 1 EM OPERAÇÃO" if b1_operando else "○ BOMBA 1 PARADA"
+                bg_card_b1 = "rgba(34,197,94,0.18)" if b1_operando else "rgba(239,68,68,0.12)"
+
+                st.markdown(f"""
+                <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid {cor_b1}; background:{bg_card_b1};'>
+                    <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b1};'>
+                        {label_b1}
+                    </span><br>
+                    <small style='color:{COR_MUTED2}; font-size:12px;'>Status real (contato auxiliar), independente do botão abaixo</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:{COR_MUTED}; font-size:12px; text-align:center; margin-bottom:10px;'>Último comando enviado: <b style='color:{COR_ACCENT};'>{'LIGAR' if comando_b1_ligar else 'DESLIGAR'}</b></div>", unsafe_allow_html=True)
 
             if modo == "MANUAL":
                 col1_b1, col2_b1 = st.columns(2, gap="large")
                 with col1_b1:
-                    ativo_ligar = b1_ligada
+                    ativo_ligar = comando_b1_ligar
                     st.markdown(f"""
                     <div style='background:{"rgba(34,197,94,0.25)" if ativo_ligar else "rgba(34,197,94,0.05)"};
                         border:{"2px solid #22c55e" if ativo_ligar else "1px solid #22c55e40"};
@@ -593,7 +642,7 @@ else:
                         st.rerun()
 
                 with col2_b1:
-                    ativo_desligar = not b1_ligada
+                    ativo_desligar = not comando_b1_ligar
                     st.markdown(f"""
                     <div style='background:{"rgba(239,68,68,0.25)" if ativo_desligar else "rgba(239,68,68,0.05)"};
                         border:{"2px solid #ef4444" if ativo_desligar else "1px solid #ef444440"};
@@ -619,24 +668,35 @@ else:
             st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin:12px 0 8px 0;'>🔄 BOMBA 2 — EQUIPAMENTO DE RESERVA (STANDBY)</div>", unsafe_allow_html=True)
             st.markdown(f"<div style='color:{COR_MUTED}; font-size:13px; margin-bottom:16px;'>Bomba reserva configurada para backup do sistema. Aguardando a perfuração do segundo poço para uso simultâneo.</div>", unsafe_allow_html=True)
 
-            # Card de Status B2
-            cor_b2 = "#22c55e" if b2_ligada else "#ef4444"
-            label_b2 = "● BOMBA 2 LIGADA (EM OPERAÇÃO)" if b2_ligada else "○ BOMBA 2 DESLIGADA (PARADA)"
-            bg_card_b2 = "rgba(34,197,94,0.18)" if b2_ligada else "rgba(239,68,68,0.12)"
+            # Card de STATUS REAL DE OPERAÇÃO — reflete o contato auxiliar, não o botão.
+            if not online:
+                st.markdown(f"""
+                <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid #64748b; background:rgba(100,116,139,0.1);'>
+                    <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:#94a3b8;'>
+                        📡 SEM COMUNICAÇÃO — STATUS INDISPONÍVEL
+                    </span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                cor_b2 = "#22c55e" if b2_operando else "#ef4444"
+                label_b2 = "● BOMBA 2 EM OPERAÇÃO" if b2_operando else "○ BOMBA 2 PARADA"
+                bg_card_b2 = "rgba(34,197,94,0.18)" if b2_operando else "rgba(239,68,68,0.12)"
 
-            st.markdown(f"""
-            <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid {cor_b2}; background:{bg_card_b2};'>
-                <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b2};'>
-                    {label_b2}
-                </span><br>
-                <small style='color:{COR_MUTED2}; font-size:12px;'>Status Real (Contato Auxiliar): <b>{status_real_b2}</b> | Sinal de Comando: <b>{'LIGAR' if cmd_b2=='ON' else 'DESLIGAR'}</b></small>
-            </div>
-            """, unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='text-align:center; margin-bottom:20px; padding:16px; border-radius:12px; border:2px solid {cor_b2}; background:{bg_card_b2};'>
+                    <span style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; letter-spacing:2px; color:{cor_b2};'>
+                        {label_b2}
+                    </span><br>
+                    <small style='color:{COR_MUTED2}; font-size:12px;'>Status real (contato auxiliar), independente do botão abaixo</small>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown(f"<div style='color:{COR_MUTED}; font-size:12px; text-align:center; margin-bottom:10px;'>Último comando enviado: <b style='color:{COR_ACCENT};'>{'LIGAR' if comando_b2_ligar else 'DESLIGAR'}</b></div>", unsafe_allow_html=True)
 
             if modo == "MANUAL":
                 col1_b2, col2_b2 = st.columns(2, gap="large")
                 with col1_b2:
-                    ativo_ligar_b2 = b2_ligada
+                    ativo_ligar_b2 = comando_b2_ligar
                     st.markdown(f"""
                     <div style='background:{"rgba(34,197,94,0.25)" if ativo_ligar_b2 else "rgba(34,197,94,0.05)"};
                         border:{"2px solid #22c55e" if ativo_ligar_b2 else "1px solid #22c55e40"};
@@ -656,7 +716,7 @@ else:
                         st.rerun()
 
                 with col2_b2:
-                    ativo_desligar_b2 = not b2_ligada
+                    ativo_desligar_b2 = not comando_b2_ligar
                     st.markdown(f"""
                     <div style='background:{"rgba(239,68,68,0.25)" if ativo_desligar_b2 else "rgba(239,68,68,0.05)"};
                         border:{"2px solid #ef4444" if ativo_desligar_b2 else "1px solid #ef444440"};
@@ -695,13 +755,21 @@ else:
                 registrar_evento("ATIVOU o automático por software" if novo_auto else "DESATIVOU o automático por software")
                 st.rerun()
 
+            # Le os limiares atuais do Firebase (valor salvo pelo admin) com fallback nos padroes
+            try:
+                bomba_liga_pct_atual = float(db.reference("controle/bomba_liga_pct").get() or BOMBA_LIGA_PCT)
+                bomba_desliga_pct_atual = float(db.reference("controle/bomba_desliga_pct").get() or BOMBA_DESLIGA_PCT)
+            except:
+                bomba_liga_pct_atual = float(BOMBA_LIGA_PCT)
+                bomba_desliga_pct_atual = float(BOMBA_DESLIGA_PCT)
+
             if novo_auto:
                 st.markdown(f"""
                 <div class='diag-info-row'>
-                    <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span>{BOMBA_LIGA_PCT}% do reservatório</span>
+                    <span>📉</span><span class='diag-info-label'>Liga a bomba abaixo de:</span><span><b>{bomba_liga_pct_atual:.0f}%</b> do reservatório</span>
                 </div>
                 <div class='diag-info-row'>
-                    <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span>{BOMBA_DESLIGA_PCT}% do reservatório</span>
+                    <span>📈</span><span class='diag-info-label'>Desliga a bomba acima de:</span><span><b>{bomba_desliga_pct_atual:.0f}%</b> do reservatório</span>
                 </div>
                 <div class='diag-info-row'>
                     <span>🛡️</span><span class='diag-info-label'>Proteção de poço seco:</span><span>ATIVA (não liga se poço BAIXO)</span>
@@ -712,6 +780,42 @@ else:
                 """, unsafe_allow_html=True)
             else:
                 st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Automático por software desligado — controle via comando manual ou bóia do painel.</div>", unsafe_allow_html=True)
+
+            st.markdown("<br>", unsafe_allow_html=True)
+
+            # --- Ajuste dos limiares: SOMENTE ADMIN (item 05) ---
+            if st.session_state["is_admin"]:
+                st.markdown(f"""
+                <div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px;
+                    color:{COR_TITULO}; margin-bottom:10px;'>⚙️ AJUSTAR PARÂMETROS (SOMENTE ADMINISTRADOR)</div>
+                """, unsafe_allow_html=True)
+                col_p1, col_p2 = st.columns(2, gap="medium")
+                with col_p1:
+                    novo_liga = st.number_input(
+                        "Liga a bomba abaixo de (%)", min_value=0, max_value=100,
+                        value=int(bomba_liga_pct_atual), step=1, key="input_liga_pct"
+                    )
+                with col_p2:
+                    novo_desliga = st.number_input(
+                        "Desliga a bomba acima de (%)", min_value=0, max_value=100,
+                        value=int(bomba_desliga_pct_atual), step=1, key="input_desliga_pct"
+                    )
+                if st.button("💾 SALVAR PARÂMETROS", use_container_width=True, key="btn_salvar_pct"):
+                    if novo_liga >= novo_desliga:
+                        st.error("O valor de 'Liga abaixo de' precisa ser menor que 'Desliga acima de'.")
+                    else:
+                        db.reference("controle/bomba_liga_pct").set(float(novo_liga))
+                        db.reference("controle/bomba_desliga_pct").set(float(novo_desliga))
+                        registrar_evento(f"Alterou parâmetros do automático: liga={novo_liga}% / desliga={novo_desliga}%")
+                        st.success("Parâmetros atualizados. O ESP32 vai aplicar o novo limiar no próximo ciclo (poucos segundos).")
+                        st.rerun()
+            else:
+                st.markdown(f"""
+                <div style='background:rgba(100,116,139,0.08); border:1px solid rgba(100,116,139,0.3);
+                    border-radius:10px; padding:14px 18px; text-align:center; color:{COR_MUTED}; font-size:13px;'>
+                    🔒 Ajuste dos parâmetros de liga/desliga automático disponível apenas para o Administrador Master.
+                </div>
+                """, unsafe_allow_html=True)
 
     # ─── NÍVEL DO RESERVATÓRIO ──────────────────────────────────────────────
     elif menu == "💧 Nível do Reservatório":
