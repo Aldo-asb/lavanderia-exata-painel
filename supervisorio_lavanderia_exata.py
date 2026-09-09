@@ -1118,6 +1118,27 @@ else:
                 "fim": melhor_fim.strftime("%H:%M") if melhor_fim else "",
             }
 
+        def calcular_perfil_consumo_intervalo(linhas_dia, cache_eventos, vazao_lph):
+            """Decompoe o consumo em cada intervalo de 30min do dia, mesmo quando a
+            bomba esta enchendo ao mesmo tempo, usando a vazao ja calibrada:
+            consumo_intervalo = (horas_ligada_no_intervalo x vazao) - variacao_real_medida.
+            Retorna uma lista de {horario, consumo_litros} para plotar o perfil do dia."""
+            perfil = []
+            for i in range(1, len(linhas_dia)):
+                p_ant, p_atu = linhas_dia[i - 1], linhas_dia[i]
+                v_ant, v_atu = p_ant["volume_litros"], p_atu["volume_litros"]
+                if v_ant is None or v_atu is None:
+                    continue
+                dv_medido = v_atu - v_ant
+                seg_on = segundos_ligada_intervalo(cache_eventos, "B1", p_ant["horario"], p_atu["horario"])
+                agua_entrada = (seg_on / 3600.0) * vazao_lph
+                consumo_intervalo = agua_entrada - dv_medido
+                perfil.append({
+                    "horario": p_atu["horario"],
+                    "consumo_litros": max(consumo_intervalo, 0.0)
+                })
+            return perfil
+
         try:
             cache_pontos_nivel = db.reference("historico_sensores").get() or {}
         except Exception:
@@ -1258,6 +1279,26 @@ else:
                     não importa em que horário o enchimento aconteça.
                 </div>
                 """, unsafe_allow_html=True)
+
+                # ── Perfil de consumo ao longo do dia (mesmo em horário comercial) ──
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px;
+                    color:{COR_TITULO}; margin-bottom:6px;'>📊 PERFIL DE CONSUMO AO LONGO DO DIA (estimado)</div>
+                <div style='color:{COR_MUTED}; font-size:12px; margin-bottom:12px;'>
+                    Usa a vazão calibrada para separar consumo de enchimento em cada intervalo de 30min,
+                    revelando os horários de pico de demanda da lavanderia, mesmo durante o expediente.
+                </div>
+                """, unsafe_allow_html=True)
+
+                perfil_consumo = calcular_perfil_consumo_intervalo(linhas_dia, cache_eventos_bomba, vazao_usada)
+                if perfil_consumo:
+                    df_perfil = pd.DataFrame(perfil_consumo).set_index("horario")
+                    st.bar_chart(df_perfil["consumo_litros"])
+                    pico = df_perfil["consumo_litros"].idxmax()
+                    st.markdown(f"<div style='color:{COR_MUTED}; font-size:12px; text-align:center;'>Horário de maior consumo no dia: <b style='color:{COR_TITULO};'>{pico.strftime('%H:%M')}</b> (~{df_perfil['consumo_litros'].max():,.0f} L no intervalo)</div>".replace(",", "."), unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='color:{COR_MUTED}; text-align:center;'>Sem dados suficientes para montar o perfil deste dia.</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Dados insuficientes para o balanço neste dia.</div>", unsafe_allow_html=True)
 
@@ -1561,7 +1602,7 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.7 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
+# LAVANDERIA EXATA - v2.8 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
 #   - CORRIGIDO: convenção de comando das bombas alinhada ao firmware v2.4+ do ESP32
 #     ("ON" = liga a bomba / energiza o relé, "OFF" = desliga a bomba / desenergiza o relé)
 #   - Adequação dos botões Ligar/Desligar para relés Active LOW do ESP32
