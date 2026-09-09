@@ -8,7 +8,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 import smtplib
 from email.mime.text import MIMEText
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime
 import time
 import pytz
 import urllib.parse
@@ -1022,6 +1022,102 @@ else:
                 tempo_ligada_seg += (fim_ref - inicio_on).total_seconds()
             return num_ligou, tempo_ligada_seg / 3600.0
 
+        # ── BALANÇO DE MASSA: vazão real calibrada + consumo estimado ──────
+        # Em vez de fixar um horário (ex: madrugada), o sistema procura sozinho,
+        # todo dia, a MAIOR janela contínua em que a bomba ficou ligada e o nível
+        # só subiu (sem nenhuma queda) — isso é 100% água entrando, sem consumo
+        # simultâneo, não importa em que horário do dia isso aconteça. Assim o
+        # sistema se adapta automaticamente ao horário real de enchimento (ex:
+        # 18h-22h) e continua funcionando mesmo se esse horário mudar no futuro.
+        TOLERANCIA_RUIDO_LITROS = 50  # pequena folga p/ ruido do sensor nao quebrar a janela
+        FRACAO_MINIMA_BOMBA_LIGADA = 0.95  # bomba precisa estar ligada quase o intervalo todo
+        HORAS_MINIMAS_CALIBRACAO = 1.0     # janela minima p/ confiar na medicao
+
+        def segundos_ligada_intervalo(cache_eventos, bomba, inicio_dt, fim_dt):
+            """Tempo (segundos) que a bomba ficou ligada dentro de [inicio_dt, fim_dt),
+            considerando corretamente o estado que ela já vinha antes da janela."""
+            eventos_todos = []
+            for v in cache_eventos.values():
+                if v.get("bomba", "B1") != bomba:
+                    continue
+                dt = _ts_para_datahora(v.get("data"))
+                if dt is not None:
+                    eventos_todos.append((dt, v.get("evento")))
+            eventos_todos.sort(key=lambda x: x[0])
+
+            estado_ligado = False
+            for dt, ev in eventos_todos:
+                if dt <= inicio_dt:
+                    estado_ligado = (ev == "LIGOU")
+                else:
+                    break
+
+            segundos = 0.0
+            cursor = inicio_dt
+            for dt, ev in eventos_todos:
+                if dt <= inicio_dt:
+                    continue
+                if dt >= fim_dt:
+                    break
+                if estado_ligado:
+                    segundos += (dt - cursor).total_seconds()
+                cursor = dt
+                estado_ligado = (ev == "LIGOU")
+            if estado_ligado:
+                segundos += (fim_dt - cursor).total_seconds()
+            return segundos
+
+        def calcular_vazao_calibrada_lph(data_alvo, cache_pontos, cache_eventos):
+            """Mede a vazao real do poco (L/h) achando automaticamente a maior janela
+            do dia em que a bomba ficou ligada e o nivel so subiu (enchimento puro,
+            sem consumo simultaneo). Retorna None se nao houver janela confiavel,
+            ou um dicionario com detalhes da janela encontrada."""
+            pontos_dia = carregar_pontos_nivel(data_alvo, cache_pontos)
+            if len(pontos_dia) < 2:
+                return None
+
+            melhor_dv, melhor_horas = 0.0, 0.0
+            melhor_inicio, melhor_fim = None, None
+            run_dv, run_horas = 0.0, 0.0
+            run_inicio = None
+
+            for i in range(1, len(pontos_dia)):
+                p_ant, p_atu = pontos_dia[i - 1], pontos_dia[i]
+                v_ant, v_atu = p_ant["volume_litros"], p_atu["volume_litros"]
+                dt_ant, dt_atu = p_ant["horario"], p_atu["horario"]
+                dur_seg = (dt_atu - dt_ant).total_seconds()
+
+                seg_qualifica = False
+                dv = None
+                if v_ant is not None and v_atu is not None and dur_seg > 0:
+                    dv = v_atu - v_ant
+                    seg_on = segundos_ligada_intervalo(cache_eventos, "B1", dt_ant, dt_atu)
+                    frac_on = seg_on / dur_seg
+                    if dv >= -TOLERANCIA_RUIDO_LITROS and frac_on >= FRACAO_MINIMA_BOMBA_LIGADA:
+                        seg_qualifica = True
+
+                if seg_qualifica:
+                    if run_horas == 0.0:
+                        run_inicio = dt_ant
+                    run_dv += max(dv, 0.0)
+                    run_horas += dur_seg / 3600.0
+                    if run_horas > melhor_horas:
+                        melhor_dv, melhor_horas = run_dv, run_horas
+                        melhor_inicio, melhor_fim = run_inicio, dt_atu
+                else:
+                    run_dv, run_horas, run_inicio = 0.0, 0.0, None
+
+            if melhor_horas < HORAS_MINIMAS_CALIBRACAO or melhor_dv <= 0:
+                return None
+
+            return {
+                "vazao_lph": melhor_dv / melhor_horas,
+                "horas": melhor_horas,
+                "litros": melhor_dv,
+                "inicio": melhor_inicio.strftime("%H:%M") if melhor_inicio else "",
+                "fim": melhor_fim.strftime("%H:%M") if melhor_fim else "",
+            }
+
         try:
             cache_pontos_nivel = db.reference("historico_sensores").get() or {}
         except Exception:
@@ -1056,7 +1152,7 @@ else:
             with m1:
                 st.markdown(f"""
                 <div class='gauge-card'>
-                    <div class='gauge-label'>Consumo Estimado</div>
+                    <div class='gauge-label'>Consumo (método simples)</div>
                     <div class='gauge-value' style='color:#06b6d4; font-size:48px;'>{consumo_litros:,.0f}</div>
                     <div class='gauge-unit'>litros no dia</div>
                 </div>
@@ -1086,6 +1182,120 @@ else:
                     <div class='gauge-unit'>horas no dia (B1+B2)</div>
                 </div>
                 """, unsafe_allow_html=True)
+
+            # ── Consumo por balanço de massa (mais preciso) ──────────────
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px;
+                color:{COR_TITULO}; margin-bottom:10px;'>⚖️ CONSUMO POR BALANÇO (mais preciso — considera bomba e consumo simultâneos)</div>
+            """, unsafe_allow_html=True)
+
+            resultado_calibracao = calcular_vazao_calibrada_lph(data_selecionada, cache_pontos_nivel, cache_eventos_bomba)
+            vazao_medida = resultado_calibracao["vazao_lph"] if resultado_calibracao else None
+
+            try:
+                vazao_padrao_admin = float(db.reference("controle/vazao_poco_lph").get() or 9000.0)
+            except:
+                vazao_padrao_admin = 9000.0
+
+            vazao_usada = vazao_medida if vazao_medida is not None else vazao_padrao_admin
+            if resultado_calibracao:
+                origem_vazao = f"medida hoje ({resultado_calibracao['inicio']}–{resultado_calibracao['fim']})"
+                # Grava num node proprio (nao afetado pelos botoes de apagar historico),
+                # 1 registro por dia, para consulta e auditoria posterior.
+                try:
+                    db.reference(f"calibracao_vazao_diaria/{data_selecionada.isoformat()}").set({
+                        "data": data_selecionada.isoformat(),
+                        "vazao_lph": round(resultado_calibracao["vazao_lph"], 1),
+                        "horas_janela": round(resultado_calibracao["horas"], 2),
+                        "litros_janela": round(resultado_calibracao["litros"], 1),
+                        "janela_inicio": resultado_calibracao["inicio"],
+                        "janela_fim": resultado_calibracao["fim"],
+                    })
+                except:
+                    pass
+            else:
+                origem_vazao = "padrão configurado (sem janela de enchimento confiável hoje)"
+
+            volume_inicio_dia = linhas_dia[0]["volume_litros"]
+            volume_fim_dia = linhas_dia[-1]["volume_litros"]
+
+            if volume_inicio_dia is not None and volume_fim_dia is not None:
+                agua_bombeada = total_horas * vazao_usada
+                consumo_balanco = agua_bombeada + volume_inicio_dia - volume_fim_dia
+
+                cb1, cb2, cb3 = st.columns(3, gap="medium")
+                with cb1:
+                    st.markdown(f"""
+                    <div class='gauge-card'>
+                        <div class='gauge-label'>Vazão do Poço Usada</div>
+                        <div class='gauge-value' style='color:#f59e0b; font-size:40px;'>{vazao_usada:,.0f}</div>
+                        <div class='gauge-unit'>L/h — {origem_vazao}</div>
+                    </div>
+                    """.replace(",", "."), unsafe_allow_html=True)
+                with cb2:
+                    st.markdown(f"""
+                    <div class='gauge-card'>
+                        <div class='gauge-label'>Água Bombeada no Dia</div>
+                        <div class='gauge-value' style='color:#3b82f6; font-size:40px;'>{agua_bombeada:,.0f}</div>
+                        <div class='gauge-unit'>litros (tempo ligada × vazão)</div>
+                    </div>
+                    """.replace(",", "."), unsafe_allow_html=True)
+                with cb3:
+                    st.markdown(f"""
+                    <div class='gauge-card'>
+                        <div class='gauge-label'>Consumo Real (balanço)</div>
+                        <div class='gauge-value' style='color:#22c55e; font-size:40px;'>{consumo_balanco:,.0f}</div>
+                        <div class='gauge-unit'>litros no dia</div>
+                    </div>
+                    """.replace(",", "."), unsafe_allow_html=True)
+
+                st.markdown(f"""
+                <div style='color:{COR_MUTED}; font-size:12px; text-align:center; margin-top:8px;'>
+                    Fórmula: (horas ligada × vazão) + nível início do dia − nível fim do dia.
+                    A vazão é remedida todo dia, achando automaticamente a maior janela contínua de enchimento
+                    (bomba ligada, nível só subindo) — se o poço perder vazão com o uso, o valor se ajusta sozinho,
+                    não importa em que horário o enchimento aconteça.
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Dados insuficientes para o balanço neste dia.</div>", unsafe_allow_html=True)
+
+            # ── Histórico de calibrações de vazão (para consulta/envio) ──
+            with st.expander("📜 Ver histórico de vazões medidas (por dia)"):
+                try:
+                    cache_calibracao = db.reference("calibracao_vazao_diaria").get() or {}
+                except:
+                    cache_calibracao = {}
+
+                if cache_calibracao:
+                    linhas_calib = sorted(cache_calibracao.values(), key=lambda x: x.get("data", ""), reverse=True)
+                    df_calib = pd.DataFrame(linhas_calib)
+                    st.dataframe(df_calib, use_container_width=True, hide_index=True)
+                    csv_calib = df_calib.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "⬇️ Exportar histórico de vazões (CSV)",
+                        data=csv_calib,
+                        file_name=f"vazoes_medidas_{obter_hora_brasilia().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                        key="download_calibracao_vazao"
+                    )
+                else:
+                    st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Ainda não há medições de vazão registradas.</div>", unsafe_allow_html=True)
+
+            if st.session_state["is_admin"]:
+                with st.expander("⚙️ Configurar vazão padrão do poço (fallback quando não houver medição válida)"):
+                    nova_vazao = st.number_input(
+                        "Vazão padrão do poço (L/h)", min_value=0, max_value=50000,
+                        value=int(vazao_padrao_admin), step=100, key="input_vazao_padrao"
+                    )
+                    if st.button("💾 Salvar vazão padrão", key="btn_salvar_vazao"):
+                        db.reference("controle/vazao_poco_lph").set(float(nova_vazao))
+                        registrar_evento(f"Alterou a vazão padrão do poço para {nova_vazao} L/h")
+                        st.success("Vazão padrão atualizada.")
+                        st.rerun()
+
 
             st.markdown("<br>", unsafe_allow_html=True)
             st.markdown(f"<div style='color:{COR_MUTED2}; font-size:13px; margin-bottom:8px;'>Nível do reservatório (%) ao longo do dia — subidas = bomba enchendo, descidas = consumo</div>", unsafe_allow_html=True)
@@ -1131,15 +1341,53 @@ else:
         st.markdown(f"<div style='font-family:Rajdhani,sans-serif; font-size:20px; font-weight:700; color:{COR_TITULO}; letter-spacing:2px; margin-bottom:16px;'>📝 HISTÓRICO DE AÇÕES</div>", unsafe_allow_html=True)
 
         if st.session_state["is_admin"]:
-            col_lixo = st.columns([1, 2, 1])
-            with col_lixo[1]:
-                if st.button("🗑️ LIMPAR HISTÓRICO", use_container_width=True):
-                    try:
-                        db.reference("historico_acoes").delete()
-                        db.reference("historico_sensores").delete()
-                        db.reference("historico_bomba").delete()
-                    except: pass
-                    st.rerun()
+            with st.expander("⚠️ Zona de risco: apagar históricos (somente admin)"):
+                st.markdown(f"""
+                <div style='color:#ef4444; font-size:13px; margin-bottom:12px;'>
+                    Atenção: cada botão abaixo apaga <b>permanentemente</b> só a categoria indicada.
+                    Isso NÃO afeta usuários cadastrados nem o status atual do sistema.
+                    Baixe o backup em JSON antes de apagar, caso queira guardar os dados.
+                </div>
+                """, unsafe_allow_html=True)
+
+                categorias_historico = {
+                    "historico_sensores": "📈 Histórico de Nível (leituras do reservatório)",
+                    "historico_bomba": "🔌 Histórico de Acionamento das Bombas",
+                    "historico_acoes": "📝 Histórico de Ações dos Usuários",
+                }
+
+                for chave_no_firebase, titulo_categoria in categorias_historico.items():
+                    st.markdown(f"**{titulo_categoria}**")
+                    col_bkp, col_chk, col_del = st.columns([1, 1.4, 1])
+                    with col_bkp:
+                        try:
+                            dados_categoria = db.reference(chave_no_firebase).get() or {}
+                        except:
+                            dados_categoria = {}
+                        import json as _json
+                        st.download_button(
+                            "⬇️ Backup (.json)",
+                            data=_json.dumps(dados_categoria, ensure_ascii=False, indent=2).encode("utf-8"),
+                            file_name=f"{chave_no_firebase}_{obter_hora_brasilia().strftime('%Y%m%d_%H%M')}.json",
+                            mime="application/json",
+                            use_container_width=True,
+                            key=f"backup_{chave_no_firebase}"
+                        )
+                    with col_chk:
+                        confirma = st.checkbox(
+                            "Já fiz backup, apagar mesmo assim",
+                            key=f"confirma_{chave_no_firebase}"
+                        )
+                    with col_del:
+                        if st.button("🗑️ Apagar", use_container_width=True, key=f"apagar_{chave_no_firebase}", disabled=not confirma):
+                            try:
+                                db.reference(chave_no_firebase).delete()
+                                registrar_evento(f"Apagou o histórico: {titulo_categoria}")
+                                st.success(f"{titulo_categoria} apagado.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao apagar: {e}")
+                    st.markdown("<hr style='opacity:0.15;'>", unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
 
         try:
@@ -1313,7 +1561,7 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.3 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
+# LAVANDERIA EXATA - v2.7 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
 #   - CORRIGIDO: convenção de comando das bombas alinhada ao firmware v2.4+ do ESP32
 #     ("ON" = liga a bomba / energiza o relé, "OFF" = desliga a bomba / desenergiza o relé)
 #   - Adequação dos botões Ligar/Desligar para relés Active LOW do ESP32
