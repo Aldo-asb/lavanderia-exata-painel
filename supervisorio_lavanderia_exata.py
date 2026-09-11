@@ -1212,18 +1212,11 @@ else:
             """, unsafe_allow_html=True)
 
             resultado_calibracao = calcular_vazao_calibrada_lph(data_selecionada, cache_pontos_nivel, cache_eventos_bomba)
-            vazao_medida = resultado_calibracao["vazao_lph"] if resultado_calibracao else None
+            vazao_auto_detectada = resultado_calibracao["vazao_lph"] if resultado_calibracao else None
 
-            try:
-                vazao_padrao_admin = float(db.reference("controle/vazao_poco_lph").get() or 9000.0)
-            except:
-                vazao_padrao_admin = 9000.0
-
-            vazao_usada = vazao_medida if vazao_medida is not None else vazao_padrao_admin
+            # Grava a auto-detecção num node próprio (nao afetado pelos botoes de apagar
+            # historico), so para consulta/comparacao - NAO alimenta mais o calculo principal.
             if resultado_calibracao:
-                origem_vazao = f"medida hoje ({resultado_calibracao['inicio']}–{resultado_calibracao['fim']})"
-                # Grava num node proprio (nao afetado pelos botoes de apagar historico),
-                # 1 registro por dia, para consulta e auditoria posterior.
                 try:
                     db.reference(f"calibracao_vazao_diaria/{data_selecionada.isoformat()}").set({
                         "data": data_selecionada.isoformat(),
@@ -1235,8 +1228,17 @@ else:
                     })
                 except:
                     pass
-            else:
-                origem_vazao = "padrão configurado (sem janela de enchimento confiável hoje)"
+
+            # Vazão OFICIAL: valor de confiança, medido manualmente (teste de balde) e
+            # configurado pelo admin. É esta que alimenta o cálculo do balanço abaixo -
+            # não depende do feedback do contator, então continua confiável mesmo antes
+            # de a fiação real das bombas estar conectada.
+            try:
+                vazao_oficial = float(db.reference("controle/vazao_poco_lph").get() or 6500.0)
+            except:
+                vazao_oficial = 6500.0
+
+            vazao_usada = vazao_oficial
 
             volume_inicio_dia = linhas_dia[0]["volume_litros"]
             volume_fim_dia = linhas_dia[-1]["volume_litros"]
@@ -1249,9 +1251,9 @@ else:
                 with cb1:
                     st.markdown(f"""
                     <div class='gauge-card'>
-                        <div class='gauge-label'>Vazão do Poço Usada</div>
+                        <div class='gauge-label'>Vazão Oficial Usada</div>
                         <div class='gauge-value' style='color:#f59e0b; font-size:40px;'>{vazao_usada:,.0f}</div>
-                        <div class='gauge-unit'>L/h — {origem_vazao}</div>
+                        <div class='gauge-unit'>L/h — configurada manualmente (teste de balde)</div>
                     </div>
                     """.replace(",", "."), unsafe_allow_html=True)
                 with cb2:
@@ -1273,12 +1275,34 @@ else:
 
                 st.markdown(f"""
                 <div style='color:{COR_MUTED}; font-size:12px; text-align:center; margin-top:8px;'>
-                    Fórmula: (horas ligada × vazão) + nível início do dia − nível fim do dia.
-                    A vazão é remedida todo dia, achando automaticamente a maior janela contínua de enchimento
-                    (bomba ligada, nível só subindo) — se o poço perder vazão com o uso, o valor se ajusta sozinho,
-                    não importa em que horário o enchimento aconteça.
+                    Fórmula: (horas ligada × vazão oficial) + nível início do dia − nível fim do dia.
+                    A vazão oficial é o valor que você mediu e configurou manualmente (teste de balde) — não muda sozinha.
                 </div>
                 """, unsafe_allow_html=True)
+
+                # Comparação (informativa) com a auto-detecção pelo sistema, para você
+                # acompanhar se o poço está perdendo vazão com o tempo. NÃO entra no cálculo.
+                if vazao_auto_detectada is not None:
+                    diferenca_pct = ((vazao_auto_detectada - vazao_oficial) / vazao_oficial) * 100 if vazao_oficial else 0
+                    st.markdown(f"""
+                    <div style='background:rgba(100,116,139,0.08); border:1px solid rgba(100,116,139,0.25);
+                        border-radius:10px; padding:12px 18px; margin-top:12px; text-align:center; font-size:13px; color:{COR_MUTED};'>
+                        🔍 <b>Comparação (só informativo, não entra na conta):</b> o sistema detectou sozinho uma janela de
+                        enchimento hoje ({resultado_calibracao['inicio']}–{resultado_calibracao['fim']}) com vazão de
+                        <b style='color:{COR_TITULO};'>{vazao_auto_detectada:,.0f} L/h</b>
+                        ({'+' if diferenca_pct >= 0 else ''}{diferenca_pct:.0f}% em relação à oficial).
+                        Se essa diferença crescer com o tempo, pode indicar que o poço está perdendo vazão.
+                    </div>
+                    """.replace(",", "."), unsafe_allow_html=True)
+                else:
+                    st.markdown(f"""
+                    <div style='background:rgba(100,116,139,0.08); border:1px solid rgba(100,116,139,0.25);
+                        border-radius:10px; padding:12px 18px; margin-top:12px; text-align:center; font-size:13px; color:{COR_MUTED};'>
+                        🔍 O sistema não conseguiu detectar sozinho uma janela de enchimento confiável hoje para comparar
+                        (normal enquanto o feedback físico das bombas não estiver conectado). Isso não afeta o cálculo acima,
+                        que usa só a vazão oficial configurada manualmente.
+                    </div>
+                    """, unsafe_allow_html=True)
 
                 # ── Perfil de consumo ao longo do dia (mesmo em horário comercial) ──
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -1286,7 +1310,7 @@ else:
                 <div style='font-family:Rajdhani,sans-serif; font-size:16px; font-weight:700; letter-spacing:2px;
                     color:{COR_TITULO}; margin-bottom:6px;'>📊 PERFIL DE CONSUMO AO LONGO DO DIA (estimado)</div>
                 <div style='color:{COR_MUTED}; font-size:12px; margin-bottom:12px;'>
-                    Usa a vazão calibrada para separar consumo de enchimento em cada intervalo de 30min,
+                    Usa a vazão oficial para separar consumo de enchimento em cada intervalo de 30min,
                     revelando os horários de pico de demanda da lavanderia, mesmo durante o expediente.
                 </div>
                 """, unsafe_allow_html=True)
@@ -1326,15 +1350,47 @@ else:
                     st.markdown(f"<div style='color:{COR_MUTED}; text-align:center; padding:12px;'>Ainda não há medições de vazão registradas.</div>", unsafe_allow_html=True)
 
             if st.session_state["is_admin"]:
-                with st.expander("⚙️ Configurar vazão padrão do poço (fallback quando não houver medição válida)"):
-                    nova_vazao = st.number_input(
-                        "Vazão padrão do poço (L/h)", min_value=0, max_value=50000,
-                        value=int(vazao_padrao_admin), step=100, key="input_vazao_padrao"
+                with st.expander("⚙️ Vazão Oficial do Poço (medida com teste de balde)"):
+                    st.markdown(f"""
+                    <div style='color:{COR_MUTED}; font-size:13px; margin-bottom:14px;'>
+                        Meça com um balde de volume conhecido: cronometre quantos segundos o poço leva para enchê-lo.
+                        Esse valor vira a <b>Vazão Oficial</b>, usada em todos os cálculos de consumo — não depende
+                        do feedback do contator, então continua confiável mesmo antes da fiação real estar conectada.
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    col_bd1, col_bd2 = st.columns(2, gap="medium")
+                    with col_bd1:
+                        litros_balde = st.number_input(
+                            "Volume do balde (litros)", min_value=1, max_value=1000,
+                            value=20, step=1, key="input_litros_balde"
+                        )
+                    with col_bd2:
+                        segundos_balde = st.number_input(
+                            "Tempo para encher o balde (segundos)", min_value=1, max_value=3600,
+                            value=10, step=1, key="input_segundos_balde"
+                        )
+                    vazao_calculada_balde = (litros_balde / segundos_balde) * 3600
+                    st.markdown(f"""
+                    <div style='text-align:center; font-family:Rajdhani,sans-serif; font-size:22px; font-weight:700;
+                        color:{COR_ACCENT}; margin:10px 0;'>Vazão calculada: {vazao_calculada_balde:,.0f} L/h</div>
+                    """.replace(",", "."), unsafe_allow_html=True)
+                    if st.button("💾 Salvar como Vazão Oficial", use_container_width=True, key="btn_salvar_vazao_balde"):
+                        db.reference("controle/vazao_poco_lph").set(float(vazao_calculada_balde))
+                        registrar_evento(f"Atualizou a Vazão Oficial do poço para {vazao_calculada_balde:.0f} L/h (teste de balde)")
+                        st.success("Vazão Oficial atualizada.")
+                        st.rerun()
+
+                    st.markdown("<hr style='opacity:0.15; margin:18px 0;'>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='color:{COR_MUTED}; font-size:13px; margin-bottom:8px;'>Ou, se já souber o valor, digite direto:</div>", unsafe_allow_html=True)
+                    novo_valor_direto = st.number_input(
+                        "Vazão Oficial (L/h)", min_value=0, max_value=50000,
+                        value=int(vazao_oficial), step=100, key="input_vazao_direta"
                     )
-                    if st.button("💾 Salvar vazão padrão", key="btn_salvar_vazao"):
-                        db.reference("controle/vazao_poco_lph").set(float(nova_vazao))
-                        registrar_evento(f"Alterou a vazão padrão do poço para {nova_vazao} L/h")
-                        st.success("Vazão padrão atualizada.")
+                    if st.button("💾 Salvar valor direto", use_container_width=True, key="btn_salvar_vazao_direta"):
+                        db.reference("controle/vazao_poco_lph").set(float(novo_valor_direto))
+                        registrar_evento(f"Atualizou a Vazão Oficial do poço para {novo_valor_direto} L/h (valor direto)")
+                        st.success("Vazão Oficial atualizada.")
                         st.rerun()
 
 
@@ -1602,7 +1658,7 @@ else:
         else:
             st.markdown(f"<div style='color:{COR_MUTED}; padding:20px;'>Nenhum operador cadastrado.</div>", unsafe_allow_html=True)
 
-# LAVANDERIA EXATA - v2.8 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
+# LAVANDERIA EXATA - v2.3 (supervisório alinhado com solicitações de melhorias da ASB AUTOMAÇÃO)
 #   - CORRIGIDO: convenção de comando das bombas alinhada ao firmware v2.4+ do ESP32
 #     ("ON" = liga a bomba / energiza o relé, "OFF" = desliga a bomba / desenergiza o relé)
 #   - Adequação dos botões Ligar/Desligar para relés Active LOW do ESP32
