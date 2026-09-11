@@ -1168,8 +1168,17 @@ else:
             eventos_b2 = carregar_eventos_bomba(data_selecionada, cache_eventos_bomba, "B2")
             num_ac_b1, horas_b1 = calcular_acionamentos(eventos_b1, data_selecionada)
             num_ac_b2, horas_b2 = calcular_acionamentos(eventos_b2, data_selecionada)
+            total_horas = horas_b1 + horas_b2
 
-            m1, m2, m3, m4 = st.columns(4, gap="medium")
+            # Vazão Oficial (medida manualmente, teste de balde) - buscada aqui em cima
+            # para já podermos mostrar "tempo ligado × vazão" ao lado do consumo simples.
+            try:
+                vazao_oficial = float(db.reference("controle/vazao_poco_lph").get() or 6500.0)
+            except:
+                vazao_oficial = 6500.0
+            agua_bombeada_simples = total_horas * vazao_oficial
+
+            m1, m2, m3, m4, m5 = st.columns(5, gap="medium")
             with m1:
                 st.markdown(f"""
                 <div class='gauge-card'>
@@ -1181,12 +1190,20 @@ else:
             with m2:
                 st.markdown(f"""
                 <div class='gauge-card'>
+                    <div class='gauge-label'>Água Bombeada (tempo × vazão)</div>
+                    <div class='gauge-value' style='color:#f59e0b; font-size:40px;'>{agua_bombeada_simples:,.0f}</div>
+                    <div class='gauge-unit'>litros — {total_horas:.1f}h × {vazao_oficial:,.0f} L/h</div>
+                </div>
+                """.replace(",", "."), unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"""
+                <div class='gauge-card'>
                     <div class='gauge-label'>Acionamentos B1</div>
                     <div class='gauge-value' style='color:{COR_ACCENT}; font-size:48px;'>{num_ac_b1}</div>
                     <div class='gauge-unit'>vezes ligou no dia</div>
                 </div>
                 """, unsafe_allow_html=True)
-            with m3:
+            with m4:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Acionamentos B2</div>
@@ -1194,8 +1211,7 @@ else:
                     <div class='gauge-unit'>vezes ligou no dia</div>
                 </div>
                 """, unsafe_allow_html=True)
-            with m4:
-                total_horas = horas_b1 + horas_b2
+            with m5:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Tempo Ligadas</div>
@@ -1229,15 +1245,8 @@ else:
                 except:
                     pass
 
-            # Vazão OFICIAL: valor de confiança, medido manualmente (teste de balde) e
-            # configurado pelo admin. É esta que alimenta o cálculo do balanço abaixo -
-            # não depende do feedback do contator, então continua confiável mesmo antes
-            # de a fiação real das bombas estar conectada.
-            try:
-                vazao_oficial = float(db.reference("controle/vazao_poco_lph").get() or 6500.0)
-            except:
-                vazao_oficial = 6500.0
-
+            # Vazão OFICIAL já foi buscada mais acima (usada também no card "Água Bombeada"
+            # ao lado do consumo simples). Reaproveitamos aqui para o cálculo do balanço.
             vazao_usada = vazao_oficial
 
             volume_inicio_dia = linhas_dia[0]["volume_litros"]
