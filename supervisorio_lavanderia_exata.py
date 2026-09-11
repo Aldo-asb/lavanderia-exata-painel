@@ -1258,28 +1258,30 @@ else:
                 agua_bombeada = total_horas * vazao_usada
                 consumo_balanco = agua_bombeada + volume_inicio_dia - volume_fim_dia
 
-                cb1, cb2, cb3 = st.columns(3, gap="medium")
-                with cb1:
+                tab_cb1, tab_cb2, tab_cb3 = st.tabs([
+                    "🟡 Vazão Oficial Usada", "🔵 Água Bombeada no Dia", "🟢 Consumo Real (balanço)"
+                ])
+                with tab_cb1:
                     st.markdown(f"""
                     <div class='gauge-card'>
                         <div class='gauge-label'>Vazão Oficial Usada</div>
-                        <div class='gauge-value' style='color:#f59e0b; font-size:40px;'>{vazao_usada:,.0f}</div>
+                        <div class='gauge-value' style='color:#f59e0b;'>{vazao_usada:,.0f}</div>
                         <div class='gauge-unit'>L/h — configurada manualmente (teste de balde)</div>
                     </div>
                     """.replace(",", "."), unsafe_allow_html=True)
-                with cb2:
+                with tab_cb2:
                     st.markdown(f"""
                     <div class='gauge-card'>
                         <div class='gauge-label'>Água Bombeada no Dia</div>
-                        <div class='gauge-value' style='color:#3b82f6; font-size:40px;'>{agua_bombeada:,.0f}</div>
+                        <div class='gauge-value' style='color:#3b82f6;'>{agua_bombeada:,.0f}</div>
                         <div class='gauge-unit'>litros (tempo ligada × vazão)</div>
                     </div>
                     """.replace(",", "."), unsafe_allow_html=True)
-                with cb3:
+                with tab_cb3:
                     st.markdown(f"""
                     <div class='gauge-card'>
                         <div class='gauge-label'>Consumo Real (balanço)</div>
-                        <div class='gauge-value' style='color:#22c55e; font-size:40px;'>{consumo_balanco:,.0f}</div>
+                        <div class='gauge-value' style='color:#22c55e;'>{consumo_balanco:,.0f}</div>
                         <div class='gauge-unit'>litros no dia</div>
                     </div>
                     """.replace(",", "."), unsafe_allow_html=True)
