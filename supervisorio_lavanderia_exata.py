@@ -1178,44 +1178,46 @@ else:
                 vazao_oficial = 6500.0
             agua_bombeada_simples = total_horas * vazao_oficial
 
-            m1, m2, m3, m4, m5 = st.columns(5, gap="medium")
-            with m1:
+            tab_m1, tab_m2, tab_m3, tab_m4, tab_m5 = st.tabs([
+                "📊 Consumo Simples", "💧 Água Bombeada", "🔌 Acionamentos B1", "🔌 Acionamentos B2", "⏱️ Tempo Ligadas"
+            ])
+            with tab_m1:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Consumo (método simples)</div>
-                    <div class='gauge-value' style='color:#06b6d4; font-size:48px;'>{consumo_litros:,.0f}</div>
+                    <div class='gauge-value' style='color:#06b6d4;'>{consumo_litros:,.0f}</div>
                     <div class='gauge-unit'>litros no dia</div>
                 </div>
                 """.replace(",", "."), unsafe_allow_html=True)
-            with m2:
+            with tab_m2:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Água Bombeada (tempo × vazão)</div>
-                    <div class='gauge-value' style='color:#f59e0b; font-size:40px;'>{agua_bombeada_simples:,.0f}</div>
+                    <div class='gauge-value' style='color:#f59e0b;'>{agua_bombeada_simples:,.0f}</div>
                     <div class='gauge-unit'>litros — {total_horas:.1f}h × {vazao_oficial:,.0f} L/h</div>
                 </div>
                 """.replace(",", "."), unsafe_allow_html=True)
-            with m3:
+            with tab_m3:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Acionamentos B1</div>
-                    <div class='gauge-value' style='color:{COR_ACCENT}; font-size:48px;'>{num_ac_b1}</div>
+                    <div class='gauge-value' style='color:{COR_ACCENT};'>{num_ac_b1}</div>
                     <div class='gauge-unit'>vezes ligou no dia</div>
                 </div>
                 """, unsafe_allow_html=True)
-            with m4:
+            with tab_m4:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Acionamentos B2</div>
-                    <div class='gauge-value' style='color:#a855f7; font-size:48px;'>{num_ac_b2}</div>
+                    <div class='gauge-value' style='color:#a855f7;'>{num_ac_b2}</div>
                     <div class='gauge-unit'>vezes ligou no dia</div>
                 </div>
                 """, unsafe_allow_html=True)
-            with m5:
+            with tab_m5:
                 st.markdown(f"""
                 <div class='gauge-card'>
                     <div class='gauge-label'>Tempo Ligadas</div>
-                    <div class='gauge-value' style='color:#22c55e; font-size:48px;'>{total_horas:.1f}</div>
+                    <div class='gauge-value' style='color:#22c55e;'>{total_horas:.1f}</div>
                     <div class='gauge-unit'>horas no dia (B1+B2)</div>
                 </div>
                 """, unsafe_allow_html=True)
